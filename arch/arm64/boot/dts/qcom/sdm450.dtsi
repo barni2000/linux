@@ -12,3 +12,7 @@
 		required-opps = <&rpmpd_opp_turbo>;
 	};
 };
+
+&venus {
+	compatible = "qcom,sdm450-venus";
+};

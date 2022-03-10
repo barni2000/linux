@@ -18,6 +18,7 @@ properties:
           - asahi-kasei,ak09911
           - asahi-kasei,ak09912
           - asahi-kasei,ak09916
+          - asahi-kasei,ak09918
       - enum:
           - ak8975
           - ak8963

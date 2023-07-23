@@ -74,11 +74,11 @@
 		};
 	};
 
-	i2c-gpio {
+	/*i2c-gpio {
 		compatible = "i2c-gpio";
 		sda-gpios = <&tlmm 14 (GPIO_ACTIVE_HIGH|GPIO_OPEN_DRAIN)>;
 		scl-gpios = <&tlmm 15 (GPIO_ACTIVE_HIGH|GPIO_OPEN_DRAIN)>;
-		i2c-gpio,delay-us = <2>; /* ~100 kHz */
+		i2c-gpio,delay-us = <2>;
 		#address-cells = <1>;
 		#size-cells = <0>;
 
@@ -93,7 +93,7 @@
 					"1", "0", "0",
 					"0", "0", "-1";
 		};
-	};
+	};*/
 };
 
 &aw2013_led {

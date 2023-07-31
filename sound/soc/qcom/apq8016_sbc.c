@@ -204,8 +204,18 @@ static int qdsp6_get_bit_clk_id(struct apq8016_sbc_data *data, int mi2s_id)
 static int msm8916_qdsp6_dai_init(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
 
 	snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_BP_FP);
+
+	/* HACK FOR making external codecs work
+	 *
+	 * For Coder in the Quinary DAI link we have to explicitly set the format
+	 * to I2S.
+	 */
+	if (cpu_dai->id == QUINARY_MI2S_TX) {
+		snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_BC_FC | SND_SOC_DAIFMT_I2S);
+	}
 	return apq8016_dai_init(rtd, qdsp6_dai_get_lpass_id(cpu_dai));
 }
 

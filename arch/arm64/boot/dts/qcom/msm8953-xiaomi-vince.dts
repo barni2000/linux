@@ -134,7 +134,27 @@
 };
 
 &rmi4_ts {
+	status = "disabled";
+};
+
+&i2c_3 {
 	status = "okay";
+
+	touchscreen@1 {
+		compatible = "novatek,nvt-ts";
+		reg = <1>;
+
+		interrupts-extended = <&tlmm 65 IRQ_TYPE_EDGE_FALLING>;
+
+		pinctrl-0 = <&ts_reset_active &ts_int_active>;
+		pinctrl-1 = <&ts_reset_suspend &ts_int_suspend>;
+		pinctrl-names = "default", "sleep";
+
+		iovcc-supply = <&pm8953_l6>;
+		vcc-supply = <&pm8953_l10>;
+
+		reset-gpio = <&tlmm 64 GPIO_ACTIVE_LOW>;
+	};
 };
 
 &sound_card {

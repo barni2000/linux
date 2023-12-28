@@ -13,6 +13,7 @@
 #include <linux/pm_opp.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
+#include <linux/platform_device.h>
 
 #define REG_APM_DLY_CNT			0xac
 #define APM_SEL_SWITCH_DLY_MASK		GENMASK(7, 0)
@@ -72,7 +73,7 @@ struct cpr_info {
 	 */
 	u32 apm_thr_uv;
 	/*
-	 * MSM8953 and SDM632 use completely different regions and 
+	 * MSM8953 and SDM632 use completely different regions and
 	 * configuration for Memory Accelerator. It's not clear what
 	 * those registers on SDM632 do but region is located in APCS
 	 * while on MSM8953 it's in TCSR and switches supply.

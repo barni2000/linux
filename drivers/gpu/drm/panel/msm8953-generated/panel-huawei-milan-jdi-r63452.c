@@ -12,13 +12,13 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
+#include <drm/drm_probe_helper.h>
 
 struct jdi_r63452_5p5 {
 	struct drm_panel panel;
 	struct mipi_dsi_device *dsi;
 	struct regulator_bulk_data supplies[2];
 	struct gpio_desc *reset_gpio;
-	bool prepared;
 };
 
 static inline struct jdi_r63452_5p5 *to_jdi_r63452_5p5(struct drm_panel *panel)
@@ -84,9 +84,6 @@ static int jdi_r63452_5p5_prepare(struct drm_panel *panel)
 	struct device *dev = &ctx->dsi->dev;
 	int ret;
 
-	if (ctx->prepared)
-		return 0;
-
 	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->supplies), ctx->supplies);
 	if (ret < 0) {
 		dev_err(dev, "Failed to enable regulators: %d\n", ret);
@@ -94,16 +91,6 @@ static int jdi_r63452_5p5_prepare(struct drm_panel *panel)
 	}
 
 	jdi_r63452_5p5_reset(ctx);
-
-	ctx->prepared = true;
-	return 0;
-}
-
-static int jdi_r63452_5p5_enable(struct drm_panel *panel)
-{
-	struct jdi_r63452_5p5 *ctx = to_jdi_r63452_5p5(panel);
-	struct device *dev = &ctx->dsi->dev;
-	int ret;
 
 	ret = jdi_r63452_5p5_on(ctx);
 	if (ret < 0) {
@@ -120,14 +107,10 @@ static int jdi_r63452_5p5_unprepare(struct drm_panel *panel)
 {
 	struct jdi_r63452_5p5 *ctx = to_jdi_r63452_5p5(panel);
 
-	if (!ctx->prepared)
-		return 0;
-
 
 	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
 	regulator_bulk_disable(ARRAY_SIZE(ctx->supplies), ctx->supplies);
 
-	ctx->prepared = false;
 	return 0;
 }
 
@@ -156,32 +139,19 @@ static const struct drm_display_mode jdi_r63452_5p5_mode = {
 	.vtotal = 1920 + 16 + 4 + 16,
 	.width_mm = 68,
 	.height_mm = 121,
+	.type = DRM_MODE_TYPE_DRIVER,
 };
 
 static int jdi_r63452_5p5_get_modes(struct drm_panel *panel,
 				    struct drm_connector *connector)
 {
-	struct drm_display_mode *mode;
-
-	mode = drm_mode_duplicate(connector->dev, &jdi_r63452_5p5_mode);
-	if (!mode)
-		return -ENOMEM;
-
-	drm_mode_set_name(mode);
-
-	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-	connector->display_info.width_mm = mode->width_mm;
-	connector->display_info.height_mm = mode->height_mm;
-	drm_mode_probed_add(connector, mode);
-
-	return 1;
+	return drm_connector_helper_get_modes_fixed(connector, &jdi_r63452_5p5_mode);
 }
 
 static const struct drm_panel_funcs jdi_r63452_5p5_panel_funcs = {
 	.prepare = jdi_r63452_5p5_prepare,
-	.enable = jdi_r63452_5p5_enable,
 	.unprepare = jdi_r63452_5p5_unprepare,
-	.disable= jdi_r63452_5p5_disable,
+	.disable = jdi_r63452_5p5_disable,
 	.get_modes = jdi_r63452_5p5_get_modes,
 };
 
@@ -217,7 +187,6 @@ static int jdi_r63452_5p5_probe(struct mipi_dsi_device *dsi)
 
 	drm_panel_init(&ctx->panel, dev, &jdi_r63452_5p5_panel_funcs,
 		       DRM_MODE_CONNECTOR_DSI);
-
 	ctx->panel.prepare_prev_first = true;
 
 	ret = drm_panel_of_backlight(&ctx->panel);
@@ -228,9 +197,8 @@ static int jdi_r63452_5p5_probe(struct mipi_dsi_device *dsi)
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
-		dev_err(dev, "Failed to attach to DSI host: %d\n", ret);
 		drm_panel_remove(&ctx->panel);
-		return ret;
+		return dev_err_probe(dev, ret, "Failed to attach to DSI host\n");
 	}
 
 	return 0;

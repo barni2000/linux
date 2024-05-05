@@ -14,13 +14,13 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
+#include <drm/drm_probe_helper.h>
 
 struct otm1911 {
 	struct drm_panel panel;
 	struct mipi_dsi_device *dsi;
 	struct regulator_bulk_data supplies[2];
 	struct gpio_desc *reset_gpio;
-	bool prepared;
 };
 
 static inline struct otm1911 *to_otm1911(struct drm_panel *panel)
@@ -171,9 +171,6 @@ static int otm1911_prepare(struct drm_panel *panel)
 	struct device *dev = &ctx->dsi->dev;
 	int ret;
 
-	if (ctx->prepared)
-		return 0;
-
 	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->supplies), ctx->supplies);
 	if (ret < 0) {
 		dev_err(dev, "Failed to enable regulators: %d\n", ret);
@@ -181,16 +178,6 @@ static int otm1911_prepare(struct drm_panel *panel)
 	}
 
 	otm1911_reset(ctx);
-
-	ctx->prepared = true;
-	return 0;
-}
-
-static int otm1911_enable(struct drm_panel *panel)
-{
-	struct otm1911 *ctx = to_otm1911(panel);
-	struct device *dev = &ctx->dsi->dev;
-	int ret;
 
 	ret = otm1911_on(ctx);
 	if (ret < 0) {
@@ -207,14 +194,10 @@ static int otm1911_unprepare(struct drm_panel *panel)
 {
 	struct otm1911 *ctx = to_otm1911(panel);
 
-	if (!ctx->prepared)
-		return 0;
-
 
 	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
 	regulator_bulk_disable(ARRAY_SIZE(ctx->supplies), ctx->supplies);
 
-	ctx->prepared = false;
 	return 0;
 }
 
@@ -243,32 +226,19 @@ static const struct drm_display_mode otm1911_mode = {
 	.vtotal = 1920 + 14 + 2 + 6,
 	.width_mm = 69,
 	.height_mm = 122,
+	.type = DRM_MODE_TYPE_DRIVER,
 };
 
 static int otm1911_get_modes(struct drm_panel *panel,
 			     struct drm_connector *connector)
 {
-	struct drm_display_mode *mode;
-
-	mode = drm_mode_duplicate(connector->dev, &otm1911_mode);
-	if (!mode)
-		return -ENOMEM;
-
-	drm_mode_set_name(mode);
-
-	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-	connector->display_info.width_mm = mode->width_mm;
-	connector->display_info.height_mm = mode->height_mm;
-	drm_mode_probed_add(connector, mode);
-
-	return 1;
+	return drm_connector_helper_get_modes_fixed(connector, &otm1911_mode);
 }
 
 static const struct drm_panel_funcs otm1911_panel_funcs = {
 	.prepare = otm1911_prepare,
-	.enable = otm1911_enable,
 	.unprepare = otm1911_unprepare,
-	.disable= otm1911_disable,
+	.disable = otm1911_disable,
 	.get_modes = otm1911_get_modes,
 };
 
@@ -305,7 +275,6 @@ static int otm1911_probe(struct mipi_dsi_device *dsi)
 
 	drm_panel_init(&ctx->panel, dev, &otm1911_panel_funcs,
 		       DRM_MODE_CONNECTOR_DSI);
-
 	ctx->panel.prepare_prev_first = true;
 
 	ret = drm_panel_of_backlight(&ctx->panel);
@@ -316,9 +285,8 @@ static int otm1911_probe(struct mipi_dsi_device *dsi)
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
-		dev_err(dev, "Failed to attach to DSI host: %d\n", ret);
 		drm_panel_remove(&ctx->panel);
-		return ret;
+		return dev_err_probe(dev, ret, "Failed to attach to DSI host\n");
 	}
 
 	return 0;

@@ -14,13 +14,13 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
+#include <drm/drm_probe_helper.h>
 
 struct hx8399cplus {
 	struct drm_panel panel;
 	struct mipi_dsi_device *dsi;
 	struct regulator_bulk_data supplies[2];
 	struct gpio_desc *reset_gpio;
-	bool prepared;
 };
 
 static inline struct hx8399cplus *to_hx8399cplus(struct drm_panel *panel)
@@ -91,9 +91,6 @@ static int hx8399cplus_prepare(struct drm_panel *panel)
 	struct device *dev = &ctx->dsi->dev;
 	int ret;
 
-	if (ctx->prepared)
-		return 0;
-
 	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->supplies), ctx->supplies);
 	if (ret < 0) {
 		dev_err(dev, "Failed to enable regulators: %d\n", ret);
@@ -101,16 +98,6 @@ static int hx8399cplus_prepare(struct drm_panel *panel)
 	}
 
 	hx8399cplus_reset(ctx);
-
-	ctx->prepared = true;
-	return 0;
-}
-
-static int hx8399cplus_enable(struct drm_panel *panel)
-{
-	struct hx8399cplus *ctx = to_hx8399cplus(panel);
-	struct device *dev = &ctx->dsi->dev;
-	int ret;
 
 	ret = hx8399cplus_on(ctx);
 	if (ret < 0) {
@@ -127,14 +114,10 @@ static int hx8399cplus_unprepare(struct drm_panel *panel)
 {
 	struct hx8399cplus *ctx = to_hx8399cplus(panel);
 
-	if (!ctx->prepared)
-		return 0;
-
 
 	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
 	regulator_bulk_disable(ARRAY_SIZE(ctx->supplies), ctx->supplies);
 
-	ctx->prepared = false;
 	return 0;
 }
 
@@ -163,32 +146,19 @@ static const struct drm_display_mode hx8399cplus_mode = {
 	.vtotal = 2280 + 9 + 4 + 3,
 	.width_mm = 69,
 	.height_mm = 122,
+	.type = DRM_MODE_TYPE_DRIVER,
 };
 
 static int hx8399cplus_get_modes(struct drm_panel *panel,
 				 struct drm_connector *connector)
 {
-	struct drm_display_mode *mode;
-
-	mode = drm_mode_duplicate(connector->dev, &hx8399cplus_mode);
-	if (!mode)
-		return -ENOMEM;
-
-	drm_mode_set_name(mode);
-
-	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-	connector->display_info.width_mm = mode->width_mm;
-	connector->display_info.height_mm = mode->height_mm;
-	drm_mode_probed_add(connector, mode);
-
-	return 1;
+	return drm_connector_helper_get_modes_fixed(connector, &hx8399cplus_mode);
 }
 
 static const struct drm_panel_funcs hx8399cplus_panel_funcs = {
 	.prepare = hx8399cplus_prepare,
-	.enable = hx8399cplus_enable,
 	.unprepare = hx8399cplus_unprepare,
-	.disable= hx8399cplus_disable,
+	.disable = hx8399cplus_disable,
 	.get_modes = hx8399cplus_get_modes,
 };
 
@@ -225,7 +195,6 @@ static int hx8399cplus_probe(struct mipi_dsi_device *dsi)
 
 	drm_panel_init(&ctx->panel, dev, &hx8399cplus_panel_funcs,
 		       DRM_MODE_CONNECTOR_DSI);
-
 	ctx->panel.prepare_prev_first = true;
 
 	ret = drm_panel_of_backlight(&ctx->panel);
@@ -236,9 +205,8 @@ static int hx8399cplus_probe(struct mipi_dsi_device *dsi)
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
-		dev_err(dev, "Failed to attach to DSI host: %d\n", ret);
 		drm_panel_remove(&ctx->panel);
-		return ret;
+		return dev_err_probe(dev, ret, "Failed to attach to DSI host\n");
 	}
 
 	return 0;

@@ -15,13 +15,13 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
+#include <drm/drm_probe_helper.h>
 
 struct shenchao_ili9881 {
 	struct drm_panel panel;
 	struct mipi_dsi_device *dsi;
 	struct regulator_bulk_data supplies[2];
 	struct gpio_desc *reset_gpio;
-	bool prepared;
 };
 
 static inline
@@ -114,9 +114,6 @@ static int shenchao_ili9881_prepare(struct drm_panel *panel)
 	struct device *dev = &ctx->dsi->dev;
 	int ret;
 
-	if (ctx->prepared)
-		return 0;
-
 	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->supplies), ctx->supplies);
 	if (ret < 0) {
 		dev_err(dev, "Failed to enable regulators: %d\n", ret);
@@ -124,16 +121,6 @@ static int shenchao_ili9881_prepare(struct drm_panel *panel)
 	}
 
 	shenchao_ili9881_reset(ctx);
-
-	ctx->prepared = true;
-	return 0;
-}
-
-static int shenchao_ili9881_enable(struct drm_panel *panel)
-{
-	struct shenchao_ili9881 *ctx = to_shenchao_ili9881(panel);
-	struct device *dev = &ctx->dsi->dev;
-	int ret;
 
 	ret = shenchao_ili9881_on(ctx);
 	if (ret < 0) {
@@ -150,14 +137,10 @@ static int shenchao_ili9881_unprepare(struct drm_panel *panel)
 {
 	struct shenchao_ili9881 *ctx = to_shenchao_ili9881(panel);
 
-	if (!ctx->prepared)
-		return 0;
-
 
 	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
 	regulator_bulk_disable(ARRAY_SIZE(ctx->supplies), ctx->supplies);
 
-	ctx->prepared = false;
 	return 0;
 }
 
@@ -186,32 +169,19 @@ static const struct drm_display_mode shenchao_ili9881_mode = {
 	.vtotal = 1520 + 9 + 2 + 11,
 	.width_mm = 65,
 	.height_mm = 138,
+	.type = DRM_MODE_TYPE_DRIVER,
 };
 
 static int shenchao_ili9881_get_modes(struct drm_panel *panel,
 				      struct drm_connector *connector)
 {
-	struct drm_display_mode *mode;
-
-	mode = drm_mode_duplicate(connector->dev, &shenchao_ili9881_mode);
-	if (!mode)
-		return -ENOMEM;
-
-	drm_mode_set_name(mode);
-
-	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-	connector->display_info.width_mm = mode->width_mm;
-	connector->display_info.height_mm = mode->height_mm;
-	drm_mode_probed_add(connector, mode);
-
-	return 1;
+	return drm_connector_helper_get_modes_fixed(connector, &shenchao_ili9881_mode);
 }
 
 static const struct drm_panel_funcs shenchao_ili9881_panel_funcs = {
 	.prepare = shenchao_ili9881_prepare,
-	.enable = shenchao_ili9881_enable,
 	.unprepare = shenchao_ili9881_unprepare,
-	.disable= shenchao_ili9881_disable,
+	.disable = shenchao_ili9881_disable,
 	.get_modes = shenchao_ili9881_get_modes,
 };
 
@@ -283,7 +253,6 @@ static int shenchao_ili9881_probe(struct mipi_dsi_device *dsi)
 
 	drm_panel_init(&ctx->panel, dev, &shenchao_ili9881_panel_funcs,
 		       DRM_MODE_CONNECTOR_DSI);
-
 	ctx->panel.prepare_prev_first = true;
 
 	ctx->panel.backlight = shenchao_ili9881_create_backlight(dsi);
@@ -295,9 +264,8 @@ static int shenchao_ili9881_probe(struct mipi_dsi_device *dsi)
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
-		dev_err(dev, "Failed to attach to DSI host: %d\n", ret);
 		drm_panel_remove(&ctx->panel);
-		return ret;
+		return dev_err_probe(dev, ret, "Failed to attach to DSI host\n");
 	}
 
 	return 0;

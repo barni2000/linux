@@ -12,13 +12,13 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
+#include <drm/drm_probe_helper.h>
 
 struct nt35596_ebbg {
 	struct drm_panel panel;
 	struct mipi_dsi_device *dsi;
 	struct regulator_bulk_data supplies[2];
 	struct gpio_desc *reset_gpio;
-	bool prepared;
 };
 
 static inline struct nt35596_ebbg *to_nt35596_ebbg(struct drm_panel *panel)
@@ -177,9 +177,6 @@ static int nt35596_ebbg_prepare(struct drm_panel *panel)
 	struct device *dev = &ctx->dsi->dev;
 	int ret;
 
-	if (ctx->prepared)
-		return 0;
-
 	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->supplies), ctx->supplies);
 	if (ret < 0) {
 		dev_err(dev, "Failed to enable regulators: %d\n", ret);
@@ -187,16 +184,6 @@ static int nt35596_ebbg_prepare(struct drm_panel *panel)
 	}
 
 	nt35596_ebbg_reset(ctx);
-
-	ctx->prepared = true;
-	return 0;
-}
-
-static int nt35596_ebbg_enable(struct drm_panel *panel)
-{
-	struct nt35596_ebbg *ctx = to_nt35596_ebbg(panel);
-	struct device *dev = &ctx->dsi->dev;
-	int ret;
 
 	ret = nt35596_ebbg_on(ctx);
 	if (ret < 0) {
@@ -213,14 +200,10 @@ static int nt35596_ebbg_unprepare(struct drm_panel *panel)
 {
 	struct nt35596_ebbg *ctx = to_nt35596_ebbg(panel);
 
-	if (!ctx->prepared)
-		return 0;
-
 
 	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
 	regulator_bulk_disable(ARRAY_SIZE(ctx->supplies), ctx->supplies);
 
-	ctx->prepared = false;
 	return 0;
 }
 
@@ -249,32 +232,19 @@ static const struct drm_display_mode nt35596_ebbg_mode = {
 	.vtotal = 1920 + 8 + 5 + 15,
 	.width_mm = 62,
 	.height_mm = 110,
+	.type = DRM_MODE_TYPE_DRIVER,
 };
 
 static int nt35596_ebbg_get_modes(struct drm_panel *panel,
 				  struct drm_connector *connector)
 {
-	struct drm_display_mode *mode;
-
-	mode = drm_mode_duplicate(connector->dev, &nt35596_ebbg_mode);
-	if (!mode)
-		return -ENOMEM;
-
-	drm_mode_set_name(mode);
-
-	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-	connector->display_info.width_mm = mode->width_mm;
-	connector->display_info.height_mm = mode->height_mm;
-	drm_mode_probed_add(connector, mode);
-
-	return 1;
+	return drm_connector_helper_get_modes_fixed(connector, &nt35596_ebbg_mode);
 }
 
 static const struct drm_panel_funcs nt35596_ebbg_panel_funcs = {
 	.prepare = nt35596_ebbg_prepare,
-	.enable = nt35596_ebbg_enable,
 	.unprepare = nt35596_ebbg_unprepare,
-	.disable= nt35596_ebbg_disable,
+	.disable = nt35596_ebbg_disable,
 	.get_modes = nt35596_ebbg_get_modes,
 };
 
@@ -311,7 +281,6 @@ static int nt35596_ebbg_probe(struct mipi_dsi_device *dsi)
 
 	drm_panel_init(&ctx->panel, dev, &nt35596_ebbg_panel_funcs,
 		       DRM_MODE_CONNECTOR_DSI);
-
 	ctx->panel.prepare_prev_first = true;
 
 	ret = drm_panel_of_backlight(&ctx->panel);
@@ -322,9 +291,8 @@ static int nt35596_ebbg_probe(struct mipi_dsi_device *dsi)
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
-		dev_err(dev, "Failed to attach to DSI host: %d\n", ret);
 		drm_panel_remove(&ctx->panel);
-		return ret;
+		return dev_err_probe(dev, ret, "Failed to attach to DSI host\n");
 	}
 
 	return 0;

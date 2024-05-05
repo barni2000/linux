@@ -12,13 +12,13 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
+#include <drm/drm_probe_helper.h>
 
 struct r63350 {
 	struct drm_panel panel;
 	struct mipi_dsi_device *dsi;
 	struct regulator_bulk_data supplies[2];
 	struct gpio_desc *reset_gpio;
-	bool prepared;
 };
 
 static inline struct r63350 *to_r63350(struct drm_panel *panel)
@@ -111,9 +111,6 @@ static int r63350_prepare(struct drm_panel *panel)
 	struct device *dev = &ctx->dsi->dev;
 	int ret;
 
-	if (ctx->prepared)
-		return 0;
-
 	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->supplies), ctx->supplies);
 	if (ret < 0) {
 		dev_err(dev, "Failed to enable regulators: %d\n", ret);
@@ -121,16 +118,6 @@ static int r63350_prepare(struct drm_panel *panel)
 	}
 
 	r63350_reset(ctx);
-
-	ctx->prepared = true;
-	return 0;
-}
-
-static int r63350_enable(struct drm_panel *panel)
-{
-	struct r63350 *ctx = to_r63350(panel);
-	struct device *dev = &ctx->dsi->dev;
-	int ret;
 
 	ret = r63350_on(ctx);
 	if (ret < 0) {
@@ -147,14 +134,10 @@ static int r63350_unprepare(struct drm_panel *panel)
 {
 	struct r63350 *ctx = to_r63350(panel);
 
-	if (!ctx->prepared)
-		return 0;
-
 
 	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
 	regulator_bulk_disable(ARRAY_SIZE(ctx->supplies), ctx->supplies);
 
-	ctx->prepared = false;
 	return 0;
 }
 
@@ -183,32 +166,19 @@ static const struct drm_display_mode r63350_mode = {
 	.vtotal = 1920 + 4 + 2 + 4,
 	.width_mm = 62,
 	.height_mm = 110,
+	.type = DRM_MODE_TYPE_DRIVER,
 };
 
 static int r63350_get_modes(struct drm_panel *panel,
 			    struct drm_connector *connector)
 {
-	struct drm_display_mode *mode;
-
-	mode = drm_mode_duplicate(connector->dev, &r63350_mode);
-	if (!mode)
-		return -ENOMEM;
-
-	drm_mode_set_name(mode);
-
-	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-	connector->display_info.width_mm = mode->width_mm;
-	connector->display_info.height_mm = mode->height_mm;
-	drm_mode_probed_add(connector, mode);
-
-	return 1;
+	return drm_connector_helper_get_modes_fixed(connector, &r63350_mode);
 }
 
 static const struct drm_panel_funcs r63350_panel_funcs = {
 	.prepare = r63350_prepare,
-	.enable = r63350_enable,
 	.unprepare = r63350_unprepare,
-	.disable= r63350_disable,
+	.disable = r63350_disable,
 	.get_modes = r63350_get_modes,
 };
 
@@ -245,7 +215,6 @@ static int r63350_probe(struct mipi_dsi_device *dsi)
 
 	drm_panel_init(&ctx->panel, dev, &r63350_panel_funcs,
 		       DRM_MODE_CONNECTOR_DSI);
-
 	ctx->panel.prepare_prev_first = true;
 
 	ret = drm_panel_of_backlight(&ctx->panel);
@@ -256,9 +225,8 @@ static int r63350_probe(struct mipi_dsi_device *dsi)
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
-		dev_err(dev, "Failed to attach to DSI host: %d\n", ret);
 		drm_panel_remove(&ctx->panel);
-		return ret;
+		return dev_err_probe(dev, ret, "Failed to attach to DSI host\n");
 	}
 
 	return 0;

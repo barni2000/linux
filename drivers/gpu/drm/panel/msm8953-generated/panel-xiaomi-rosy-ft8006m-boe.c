@@ -9,12 +9,14 @@
 #include <linux/of.h>
 #include <linux/regulator/consumer.h>
 
+#include <video/mipi_display.h>
+
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
 #include <drm/drm_probe_helper.h>
 
-struct nt36672_tianmaplus_e7 {
+struct ft8006m_boe_5p7 {
 	struct drm_panel panel;
 	struct mipi_dsi_device *dsi;
 	struct regulator_bulk_data supplies[2];
@@ -22,51 +24,50 @@ struct nt36672_tianmaplus_e7 {
 };
 
 static inline
-struct nt36672_tianmaplus_e7 *to_nt36672_tianmaplus_e7(struct drm_panel *panel)
+struct ft8006m_boe_5p7 *to_ft8006m_boe_5p7(struct drm_panel *panel)
 {
-	return container_of(panel, struct nt36672_tianmaplus_e7, panel);
+	return container_of(panel, struct ft8006m_boe_5p7, panel);
 }
 
-static void nt36672_tianmaplus_e7_reset(struct nt36672_tianmaplus_e7 *ctx)
+static void ft8006m_boe_5p7_reset(struct ft8006m_boe_5p7 *ctx)
 {
 	gpiod_set_value_cansleep(ctx->reset_gpio, 0);
-	usleep_range(10000, 11000);
+	msleep(35);
 	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
-	usleep_range(10000, 11000);
+	usleep_range(5000, 6000);
 	gpiod_set_value_cansleep(ctx->reset_gpio, 0);
 	usleep_range(10000, 11000);
 }
 
-static int nt36672_tianmaplus_e7_on(struct nt36672_tianmaplus_e7 *ctx)
+static int ft8006m_boe_5p7_on(struct ft8006m_boe_5p7 *ctx)
 {
 	struct mipi_dsi_device *dsi = ctx->dsi;
 
-	dsi->mode_flags |= MIPI_DSI_MODE_LPM;
-
-	mipi_dsi_generic_write_seq(dsi, 0xff, 0x10);
-	usleep_range(1000, 2000);
-	mipi_dsi_generic_write_seq(dsi, 0x35, 0x00);
-	mipi_dsi_generic_write_seq(dsi, 0x51, 0xff);
-	mipi_dsi_generic_write_seq(dsi, 0x53, 0x2c);
-	mipi_dsi_generic_write_seq(dsi, 0x55, 0x00);
-	mipi_dsi_generic_write_seq(dsi, 0xff, 0x10);
-	mipi_dsi_generic_write_seq(dsi, 0x11, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x11, 0x00);
 	msleep(120);
-	mipi_dsi_generic_write_seq(dsi, 0x29, 0x00);
-	msleep(20);
+	mipi_dsi_dcs_write_seq(dsi, 0x50, 0x5a, 0x0e);
+	mipi_dsi_dcs_write_seq(dsi, 0x83, 0xac, 0xb4, 0x6d);
+	mipi_dsi_dcs_write_seq(dsi, 0x50, 0x5a, 0x19);
+	mipi_dsi_dcs_write_seq(dsi, 0x90,
+			       0xfc, 0x6f, 0xf6, 0xef, 0xcf, 0xaf, 0x0f);
+	mipi_dsi_dcs_write_seq(dsi, MIPI_DCS_READ_DDB_START, 0x00, 0x44);
+	mipi_dsi_dcs_write_seq(dsi, 0x80,
+			       0xea, 0xd3, 0xc6, 0xb8, 0xaf, 0xa6, 0x9e, 0x98,
+			       0x92, 0x8e, 0x8a, 0x85, 0x00, 0x60, 0xf6, 0xcf);
+	mipi_dsi_dcs_write_seq(dsi, 0x50, 0x5a, 0x23);
+	mipi_dsi_dcs_write_seq(dsi, 0x90, 0xff, 0x0f, 0x00, 0x00, 0x2c, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x50, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x29, 0x00);
+	usleep_range(2000, 3000);
 
 	return 0;
 }
 
-static int nt36672_tianmaplus_e7_off(struct nt36672_tianmaplus_e7 *ctx)
+static int ft8006m_boe_5p7_off(struct ft8006m_boe_5p7 *ctx)
 {
 	struct mipi_dsi_device *dsi = ctx->dsi;
 	struct device *dev = &dsi->dev;
 	int ret;
-
-	dsi->mode_flags &= ~MIPI_DSI_MODE_LPM;
-
-	mipi_dsi_generic_write_seq(dsi, 0xff, 0x00);
 
 	ret = mipi_dsi_dcs_set_display_off(dsi);
 	if (ret < 0) {
@@ -82,12 +83,15 @@ static int nt36672_tianmaplus_e7_off(struct nt36672_tianmaplus_e7 *ctx)
 	}
 	msleep(120);
 
+	mipi_dsi_dcs_write_seq(dsi, 0x04, 0x5a);
+	mipi_dsi_dcs_write_seq(dsi, 0x05, 0x5a);
+
 	return 0;
 }
 
-static int nt36672_tianmaplus_e7_prepare(struct drm_panel *panel)
+static int ft8006m_boe_5p7_prepare(struct drm_panel *panel)
 {
-	struct nt36672_tianmaplus_e7 *ctx = to_nt36672_tianmaplus_e7(panel);
+	struct ft8006m_boe_5p7 *ctx = to_ft8006m_boe_5p7(panel);
 	struct device *dev = &ctx->dsi->dev;
 	int ret;
 
@@ -97,9 +101,9 @@ static int nt36672_tianmaplus_e7_prepare(struct drm_panel *panel)
 		return ret;
 	}
 
-	nt36672_tianmaplus_e7_reset(ctx);
+	ft8006m_boe_5p7_reset(ctx);
 
-	ret = nt36672_tianmaplus_e7_on(ctx);
+	ret = ft8006m_boe_5p7_on(ctx);
 	if (ret < 0) {
 		dev_err(dev, "Failed to initialize panel: %d\n", ret);
 		gpiod_set_value_cansleep(ctx->reset_gpio, 1);
@@ -110,9 +114,9 @@ static int nt36672_tianmaplus_e7_prepare(struct drm_panel *panel)
 	return 0;
 }
 
-static int nt36672_tianmaplus_e7_unprepare(struct drm_panel *panel)
+static int ft8006m_boe_5p7_unprepare(struct drm_panel *panel)
 {
-	struct nt36672_tianmaplus_e7 *ctx = to_nt36672_tianmaplus_e7(panel);
+	struct ft8006m_boe_5p7 *ctx = to_ft8006m_boe_5p7(panel);
 
 
 	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
@@ -121,51 +125,51 @@ static int nt36672_tianmaplus_e7_unprepare(struct drm_panel *panel)
 	return 0;
 }
 
-static int nt36672_tianmaplus_e7_disable(struct drm_panel *panel)
+static int ft8006m_boe_5p7_disable(struct drm_panel *panel)
 {
-	struct nt36672_tianmaplus_e7 *ctx = to_nt36672_tianmaplus_e7(panel);
+	struct ft8006m_boe_5p7 *ctx = to_ft8006m_boe_5p7(panel);
 	struct device *dev = &ctx->dsi->dev;
 	int ret;
 
-	ret = nt36672_tianmaplus_e7_off(ctx);
+	ret = ft8006m_boe_5p7_off(ctx);
 	if (ret < 0)
 		dev_err(dev, "Failed to un-initialize panel: %d\n", ret);
 
 	return 0;
 }
 
-static const struct drm_display_mode nt36672_tianmaplus_e7_mode = {
-	.clock = (1080 + 16 + 20 + 64) * (2160 + 4 + 2 + 4) * 60 / 1000,
-	.hdisplay = 1080,
-	.hsync_start = 1080 + 16,
-	.hsync_end = 1080 + 16 + 20,
-	.htotal = 1080 + 16 + 20 + 64,
-	.vdisplay = 2160,
-	.vsync_start = 2160 + 4,
-	.vsync_end = 2160 + 4 + 2,
-	.vtotal = 2160 + 4 + 2 + 4,
-	.width_mm = 69,
-	.height_mm = 122,
+static const struct drm_display_mode ft8006m_boe_5p7_mode = {
+	.clock = (720 + 45 + 14 + 25) * (1440 + 65 + 8 + 37) * 60 / 1000,
+	.hdisplay = 720,
+	.hsync_start = 720 + 45,
+	.hsync_end = 720 + 45 + 14,
+	.htotal = 720 + 45 + 14 + 25,
+	.vdisplay = 1440,
+	.vsync_start = 1440 + 65,
+	.vsync_end = 1440 + 65 + 8,
+	.vtotal = 1440 + 65 + 8 + 37,
+	.width_mm = 65,
+	.height_mm = 129,
 	.type = DRM_MODE_TYPE_DRIVER,
 };
 
-static int nt36672_tianmaplus_e7_get_modes(struct drm_panel *panel,
-					   struct drm_connector *connector)
+static int ft8006m_boe_5p7_get_modes(struct drm_panel *panel,
+				     struct drm_connector *connector)
 {
-	return drm_connector_helper_get_modes_fixed(connector, &nt36672_tianmaplus_e7_mode);
+	return drm_connector_helper_get_modes_fixed(connector, &ft8006m_boe_5p7_mode);
 }
 
-static const struct drm_panel_funcs nt36672_tianmaplus_e7_panel_funcs = {
-	.prepare = nt36672_tianmaplus_e7_prepare,
-	.unprepare = nt36672_tianmaplus_e7_unprepare,
-	.disable = nt36672_tianmaplus_e7_disable,
-	.get_modes = nt36672_tianmaplus_e7_get_modes,
+static const struct drm_panel_funcs ft8006m_boe_5p7_panel_funcs = {
+	.prepare = ft8006m_boe_5p7_prepare,
+	.unprepare = ft8006m_boe_5p7_unprepare,
+	.disable = ft8006m_boe_5p7_disable,
+	.get_modes = ft8006m_boe_5p7_get_modes,
 };
 
-static int nt36672_tianmaplus_e7_probe(struct mipi_dsi_device *dsi)
+static int ft8006m_boe_5p7_probe(struct mipi_dsi_device *dsi)
 {
 	struct device *dev = &dsi->dev;
-	struct nt36672_tianmaplus_e7 *ctx;
+	struct ft8006m_boe_5p7 *ctx;
 	int ret;
 
 	ctx = devm_kzalloc(dev, sizeof(*ctx), GFP_KERNEL);
@@ -190,10 +194,10 @@ static int nt36672_tianmaplus_e7_probe(struct mipi_dsi_device *dsi)
 	dsi->lanes = 4;
 	dsi->format = MIPI_DSI_FMT_RGB888;
 	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST |
-			  MIPI_DSI_MODE_VIDEO_HSE |
-			  MIPI_DSI_CLOCK_NON_CONTINUOUS;
+			  MIPI_DSI_MODE_VIDEO_HSE | MIPI_DSI_MODE_NO_EOT_PACKET |
+			  MIPI_DSI_CLOCK_NON_CONTINUOUS | MIPI_DSI_MODE_LPM;
 
-	drm_panel_init(&ctx->panel, dev, &nt36672_tianmaplus_e7_panel_funcs,
+	drm_panel_init(&ctx->panel, dev, &ft8006m_boe_5p7_panel_funcs,
 		       DRM_MODE_CONNECTOR_DSI);
 	ctx->panel.prepare_prev_first = true;
 
@@ -212,9 +216,9 @@ static int nt36672_tianmaplus_e7_probe(struct mipi_dsi_device *dsi)
 	return 0;
 }
 
-static void nt36672_tianmaplus_e7_remove(struct mipi_dsi_device *dsi)
+static void ft8006m_boe_5p7_remove(struct mipi_dsi_device *dsi)
 {
-	struct nt36672_tianmaplus_e7 *ctx = mipi_dsi_get_drvdata(dsi);
+	struct ft8006m_boe_5p7 *ctx = mipi_dsi_get_drvdata(dsi);
 	int ret;
 
 	ret = mipi_dsi_detach(dsi);
@@ -224,22 +228,22 @@ static void nt36672_tianmaplus_e7_remove(struct mipi_dsi_device *dsi)
 	drm_panel_remove(&ctx->panel);
 }
 
-static const struct of_device_id nt36672_tianmaplus_e7_of_match[] = {
-	{ .compatible = "xiaomi,nt36672-tianma-fhdplus-e7" }, // FIXME
+static const struct of_device_id ft8006m_boe_5p7_of_match[] = {
+	{ .compatible = "xiaomi,rosy-ft8006m-boe" }, // FIXME
 	{ /* sentinel */ }
 };
-MODULE_DEVICE_TABLE(of, nt36672_tianmaplus_e7_of_match);
+MODULE_DEVICE_TABLE(of, ft8006m_boe_5p7_of_match);
 
-static struct mipi_dsi_driver nt36672_tianmaplus_e7_driver = {
-	.probe = nt36672_tianmaplus_e7_probe,
-	.remove = nt36672_tianmaplus_e7_remove,
+static struct mipi_dsi_driver ft8006m_boe_5p7_driver = {
+	.probe = ft8006m_boe_5p7_probe,
+	.remove = ft8006m_boe_5p7_remove,
 	.driver = {
-		.name = "panel-nt36672-tianmaplus-e7",
-		.of_match_table = nt36672_tianmaplus_e7_of_match,
+		.name = "panel-ft8006m-boe-5p7",
+		.of_match_table = ft8006m_boe_5p7_of_match,
 	},
 };
-module_mipi_dsi_driver(nt36672_tianmaplus_e7_driver);
+module_mipi_dsi_driver(ft8006m_boe_5p7_driver);
 
 MODULE_AUTHOR("linux-mdss-dsi-panel-driver-generator <fix@me>"); // FIXME
-MODULE_DESCRIPTION("DRM driver for nt36672 tianma e7 fhdplus video mode dsi panel");
+MODULE_DESCRIPTION("DRM driver for ft8006m_boe_5p7_720p_video");
 MODULE_LICENSE("GPL");

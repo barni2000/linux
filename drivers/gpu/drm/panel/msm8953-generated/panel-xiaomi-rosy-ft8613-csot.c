@@ -16,37 +16,58 @@
 #include <drm/drm_panel.h>
 #include <drm/drm_probe_helper.h>
 
-struct r63350_ebbg {
+struct ft8613_csot_5p7 {
 	struct drm_panel panel;
 	struct mipi_dsi_device *dsi;
 	struct regulator_bulk_data supplies[2];
 	struct gpio_desc *reset_gpio;
 };
 
-static inline struct r63350_ebbg *to_r63350_ebbg(struct drm_panel *panel)
+static inline
+struct ft8613_csot_5p7 *to_ft8613_csot_5p7(struct drm_panel *panel)
 {
-	return container_of(panel, struct r63350_ebbg, panel);
+	return container_of(panel, struct ft8613_csot_5p7, panel);
 }
 
-static void r63350_ebbg_reset(struct r63350_ebbg *ctx)
+static void ft8613_csot_5p7_reset(struct ft8613_csot_5p7 *ctx)
 {
 	gpiod_set_value_cansleep(ctx->reset_gpio, 0);
 	usleep_range(10000, 11000);
 	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
-	usleep_range(10000, 11000);
+	usleep_range(5000, 6000);
 	gpiod_set_value_cansleep(ctx->reset_gpio, 0);
-	usleep_range(10000, 11000);
+	msleep(30);
 }
 
-static int r63350_ebbg_on(struct r63350_ebbg *ctx)
+static int ft8613_csot_5p7_on(struct ft8613_csot_5p7 *ctx)
 {
 	struct mipi_dsi_device *dsi = ctx->dsi;
 	struct device *dev = &dsi->dev;
 	int ret;
 
-	dsi->mode_flags |= MIPI_DSI_MODE_LPM;
+	mipi_dsi_dcs_write_seq(dsi, 0x00, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0xff, 0x87, 0x16, 0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0x00, 0x80);
+	mipi_dsi_dcs_write_seq(dsi, 0xff, 0x87, 0x16);
+	mipi_dsi_dcs_write_seq(dsi, 0x00, 0x81);
+	mipi_dsi_dcs_write_seq(dsi, 0xf3,
+			       0x40, 0x89, 0xc0, 0x40, 0x89, 0xc0, 0x40, 0x81,
+			       0xc0, 0x40, 0x81, 0xc0);
+	mipi_dsi_dcs_write_seq(dsi, 0x00, 0x00);
 
-	mipi_dsi_generic_write_seq(dsi, 0xb0, 0x04);
+	ret = mipi_dsi_dcs_set_column_address(dsi, 0x0000, 0x02cf);
+	if (ret < 0) {
+		dev_err(dev, "Failed to set column address: %d\n", ret);
+		return ret;
+	}
+
+	mipi_dsi_dcs_write_seq(dsi, 0x00, 0x00);
+
+	ret = mipi_dsi_dcs_set_page_address(dsi, 0x0000, 0x059f);
+	if (ret < 0) {
+		dev_err(dev, "Failed to set page address: %d\n", ret);
+		return ret;
+	}
 
 	ret = mipi_dsi_dcs_set_display_brightness(dsi, 0x00ff);
 	if (ret < 0) {
@@ -54,23 +75,21 @@ static int r63350_ebbg_on(struct r63350_ebbg *ctx)
 		return ret;
 	}
 
-	mipi_dsi_dcs_write_seq(dsi, MIPI_DCS_WRITE_CONTROL_DISPLAY, 0x2c);
+	mipi_dsi_dcs_write_seq(dsi, MIPI_DCS_WRITE_CONTROL_DISPLAY, 0x24);
 	mipi_dsi_dcs_write_seq(dsi, MIPI_DCS_WRITE_POWER_SAVE, 0x00);
-	mipi_dsi_dcs_write_seq(dsi, 0x29, 0x00);
-	usleep_range(10000, 11000);
 	mipi_dsi_dcs_write_seq(dsi, 0x11, 0x00);
 	msleep(120);
+	mipi_dsi_dcs_write_seq(dsi, 0x29, 0x00);
+	usleep_range(2000, 3000);
 
 	return 0;
 }
 
-static int r63350_ebbg_off(struct r63350_ebbg *ctx)
+static int ft8613_csot_5p7_off(struct ft8613_csot_5p7 *ctx)
 {
 	struct mipi_dsi_device *dsi = ctx->dsi;
 	struct device *dev = &dsi->dev;
 	int ret;
-
-	dsi->mode_flags &= ~MIPI_DSI_MODE_LPM;
 
 	ret = mipi_dsi_dcs_set_display_off(dsi);
 	if (ret < 0) {
@@ -86,12 +105,15 @@ static int r63350_ebbg_off(struct r63350_ebbg *ctx)
 	}
 	msleep(120);
 
+	mipi_dsi_dcs_write_seq(dsi, 0x00, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0xf7, 0x5a, 0xa5, 0x87, 0x16);
+
 	return 0;
 }
 
-static int r63350_ebbg_prepare(struct drm_panel *panel)
+static int ft8613_csot_5p7_prepare(struct drm_panel *panel)
 {
-	struct r63350_ebbg *ctx = to_r63350_ebbg(panel);
+	struct ft8613_csot_5p7 *ctx = to_ft8613_csot_5p7(panel);
 	struct device *dev = &ctx->dsi->dev;
 	int ret;
 
@@ -101,9 +123,9 @@ static int r63350_ebbg_prepare(struct drm_panel *panel)
 		return ret;
 	}
 
-	r63350_ebbg_reset(ctx);
+	ft8613_csot_5p7_reset(ctx);
 
-	ret = r63350_ebbg_on(ctx);
+	ret = ft8613_csot_5p7_on(ctx);
 	if (ret < 0) {
 		dev_err(dev, "Failed to initialize panel: %d\n", ret);
 		gpiod_set_value_cansleep(ctx->reset_gpio, 1);
@@ -114,9 +136,9 @@ static int r63350_ebbg_prepare(struct drm_panel *panel)
 	return 0;
 }
 
-static int r63350_ebbg_unprepare(struct drm_panel *panel)
+static int ft8613_csot_5p7_unprepare(struct drm_panel *panel)
 {
-	struct r63350_ebbg *ctx = to_r63350_ebbg(panel);
+	struct ft8613_csot_5p7 *ctx = to_ft8613_csot_5p7(panel);
 
 
 	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
@@ -125,51 +147,51 @@ static int r63350_ebbg_unprepare(struct drm_panel *panel)
 	return 0;
 }
 
-static int r63350_ebbg_disable(struct drm_panel *panel)
+static int ft8613_csot_5p7_disable(struct drm_panel *panel)
 {
-	struct r63350_ebbg *ctx = to_r63350_ebbg(panel);
+	struct ft8613_csot_5p7 *ctx = to_ft8613_csot_5p7(panel);
 	struct device *dev = &ctx->dsi->dev;
 	int ret;
 
-	ret = r63350_ebbg_off(ctx);
+	ret = ft8613_csot_5p7_off(ctx);
 	if (ret < 0)
 		dev_err(dev, "Failed to un-initialize panel: %d\n", ret);
 
 	return 0;
 }
 
-static const struct drm_display_mode r63350_ebbg_mode = {
-	.clock = (1080 + 100 + 24 + 84) * (1920 + 16 + 5 + 3) * 60 / 1000,
-	.hdisplay = 1080,
-	.hsync_start = 1080 + 100,
-	.hsync_end = 1080 + 100 + 24,
-	.htotal = 1080 + 100 + 24 + 84,
-	.vdisplay = 1920,
-	.vsync_start = 1920 + 16,
-	.vsync_end = 1920 + 16 + 5,
-	.vtotal = 1920 + 16 + 5 + 3,
-	.width_mm = 69,
-	.height_mm = 122,
+static const struct drm_display_mode ft8613_csot_5p7_mode = {
+	.clock = (720 + 32 + 2 + 32) * (1440 + 16 + 2 + 16) * 60 / 1000,
+	.hdisplay = 720,
+	.hsync_start = 720 + 32,
+	.hsync_end = 720 + 32 + 2,
+	.htotal = 720 + 32 + 2 + 32,
+	.vdisplay = 1440,
+	.vsync_start = 1440 + 16,
+	.vsync_end = 1440 + 16 + 2,
+	.vtotal = 1440 + 16 + 2 + 16,
+	.width_mm = 65,
+	.height_mm = 129,
 	.type = DRM_MODE_TYPE_DRIVER,
 };
 
-static int r63350_ebbg_get_modes(struct drm_panel *panel,
-				 struct drm_connector *connector)
+static int ft8613_csot_5p7_get_modes(struct drm_panel *panel,
+				     struct drm_connector *connector)
 {
-	return drm_connector_helper_get_modes_fixed(connector, &r63350_ebbg_mode);
+	return drm_connector_helper_get_modes_fixed(connector, &ft8613_csot_5p7_mode);
 }
 
-static const struct drm_panel_funcs r63350_ebbg_panel_funcs = {
-	.prepare = r63350_ebbg_prepare,
-	.unprepare = r63350_ebbg_unprepare,
-	.disable = r63350_ebbg_disable,
-	.get_modes = r63350_ebbg_get_modes,
+static const struct drm_panel_funcs ft8613_csot_5p7_panel_funcs = {
+	.prepare = ft8613_csot_5p7_prepare,
+	.unprepare = ft8613_csot_5p7_unprepare,
+	.disable = ft8613_csot_5p7_disable,
+	.get_modes = ft8613_csot_5p7_get_modes,
 };
 
-static int r63350_ebbg_probe(struct mipi_dsi_device *dsi)
+static int ft8613_csot_5p7_probe(struct mipi_dsi_device *dsi)
 {
 	struct device *dev = &dsi->dev;
-	struct r63350_ebbg *ctx;
+	struct ft8613_csot_5p7 *ctx;
 	int ret;
 
 	ctx = devm_kzalloc(dev, sizeof(*ctx), GFP_KERNEL);
@@ -194,10 +216,10 @@ static int r63350_ebbg_probe(struct mipi_dsi_device *dsi)
 	dsi->lanes = 4;
 	dsi->format = MIPI_DSI_FMT_RGB888;
 	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST |
-			  MIPI_DSI_MODE_VIDEO_HSE |
-			  MIPI_DSI_CLOCK_NON_CONTINUOUS;
+			  MIPI_DSI_MODE_VIDEO_HSE | MIPI_DSI_MODE_NO_EOT_PACKET |
+			  MIPI_DSI_CLOCK_NON_CONTINUOUS | MIPI_DSI_MODE_LPM;
 
-	drm_panel_init(&ctx->panel, dev, &r63350_ebbg_panel_funcs,
+	drm_panel_init(&ctx->panel, dev, &ft8613_csot_5p7_panel_funcs,
 		       DRM_MODE_CONNECTOR_DSI);
 	ctx->panel.prepare_prev_first = true;
 
@@ -216,9 +238,9 @@ static int r63350_ebbg_probe(struct mipi_dsi_device *dsi)
 	return 0;
 }
 
-static void r63350_ebbg_remove(struct mipi_dsi_device *dsi)
+static void ft8613_csot_5p7_remove(struct mipi_dsi_device *dsi)
 {
-	struct r63350_ebbg *ctx = mipi_dsi_get_drvdata(dsi);
+	struct ft8613_csot_5p7 *ctx = mipi_dsi_get_drvdata(dsi);
 	int ret;
 
 	ret = mipi_dsi_detach(dsi);
@@ -228,22 +250,22 @@ static void r63350_ebbg_remove(struct mipi_dsi_device *dsi)
 	drm_panel_remove(&ctx->panel);
 }
 
-static const struct of_device_id r63350_ebbg_of_match[] = {
-	{ .compatible = "xiaomi,ebbg-r63350" }, // FIXME
+static const struct of_device_id ft8613_csot_5p7_of_match[] = {
+	{ .compatible = "xiaomi,rosy-ft8613-csot" }, // FIXME
 	{ /* sentinel */ }
 };
-MODULE_DEVICE_TABLE(of, r63350_ebbg_of_match);
+MODULE_DEVICE_TABLE(of, ft8613_csot_5p7_of_match);
 
-static struct mipi_dsi_driver r63350_ebbg_driver = {
-	.probe = r63350_ebbg_probe,
-	.remove = r63350_ebbg_remove,
+static struct mipi_dsi_driver ft8613_csot_5p7_driver = {
+	.probe = ft8613_csot_5p7_probe,
+	.remove = ft8613_csot_5p7_remove,
 	.driver = {
-		.name = "panel-r63350-ebbg",
-		.of_match_table = r63350_ebbg_of_match,
+		.name = "panel-ft8613-csot-5p7",
+		.of_match_table = ft8613_csot_5p7_of_match,
 	},
 };
-module_mipi_dsi_driver(r63350_ebbg_driver);
+module_mipi_dsi_driver(ft8613_csot_5p7_driver);
 
 MODULE_AUTHOR("linux-mdss-dsi-panel-driver-generator <fix@me>"); // FIXME
-MODULE_DESCRIPTION("DRM driver for r63350_ebbg fhd video mode dsi panel");
+MODULE_DESCRIPTION("DRM driver for ft8613_csot_5p7_720p_video");
 MODULE_LICENSE("GPL");

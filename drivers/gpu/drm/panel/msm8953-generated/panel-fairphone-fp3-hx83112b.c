@@ -15,13 +15,13 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
+#include <drm/drm_probe_helper.h>
 
 struct djn_hx83112b {
 	struct drm_panel panel;
 	struct mipi_dsi_device *dsi;
 	struct regulator_bulk_data supplies[2];
 	struct gpio_desc *reset_gpio;
-	bool prepared;
 };
 
 static inline struct djn_hx83112b *to_djn_hx83112b(struct drm_panel *panel)
@@ -238,9 +238,6 @@ static int djn_hx83112b_prepare(struct drm_panel *panel)
 	struct device *dev = &ctx->dsi->dev;
 	int ret;
 
-	if (ctx->prepared)
-		return 0;
-
 	ret = regulator_bulk_enable(ARRAY_SIZE(ctx->supplies), ctx->supplies);
 	if (ret < 0) {
 		dev_err(dev, "Failed to enable regulators: %d\n", ret);
@@ -248,16 +245,6 @@ static int djn_hx83112b_prepare(struct drm_panel *panel)
 	}
 
 	djn_hx83112b_reset(ctx);
-
-	ctx->prepared = true;
-	return 0;
-}
-
-static int djn_hx83112b_enable(struct drm_panel *panel)
-{
-	struct djn_hx83112b *ctx = to_djn_hx83112b(panel);
-	struct device *dev = &ctx->dsi->dev;
-	int ret;
 
 	ret = djn_hx83112b_on(ctx);
 	if (ret < 0) {
@@ -274,14 +261,10 @@ static int djn_hx83112b_unprepare(struct drm_panel *panel)
 {
 	struct djn_hx83112b *ctx = to_djn_hx83112b(panel);
 
-	if (!ctx->prepared)
-		return 0;
-
 
 	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
 	regulator_bulk_disable(ARRAY_SIZE(ctx->supplies), ctx->supplies);
 
-	ctx->prepared = false;
 	return 0;
 }
 
@@ -310,32 +293,19 @@ static const struct drm_display_mode djn_hx83112b_mode = {
 	.vtotal = 2160 + 32 + 2 + 2,
 	.width_mm = 65,
 	.height_mm = 128,
+	.type = DRM_MODE_TYPE_DRIVER,
 };
 
 static int djn_hx83112b_get_modes(struct drm_panel *panel,
 				  struct drm_connector *connector)
 {
-	struct drm_display_mode *mode;
-
-	mode = drm_mode_duplicate(connector->dev, &djn_hx83112b_mode);
-	if (!mode)
-		return -ENOMEM;
-
-	drm_mode_set_name(mode);
-
-	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-	connector->display_info.width_mm = mode->width_mm;
-	connector->display_info.height_mm = mode->height_mm;
-	drm_mode_probed_add(connector, mode);
-
-	return 1;
+	return drm_connector_helper_get_modes_fixed(connector, &djn_hx83112b_mode);
 }
 
 static const struct drm_panel_funcs djn_hx83112b_panel_funcs = {
 	.prepare = djn_hx83112b_prepare,
-	.enable = djn_hx83112b_enable,
 	.unprepare = djn_hx83112b_unprepare,
-	.disable= djn_hx83112b_disable,
+	.disable = djn_hx83112b_disable,
 	.get_modes = djn_hx83112b_get_modes,
 };
 
@@ -407,7 +377,6 @@ static int djn_hx83112b_probe(struct mipi_dsi_device *dsi)
 
 	drm_panel_init(&ctx->panel, dev, &djn_hx83112b_panel_funcs,
 		       DRM_MODE_CONNECTOR_DSI);
-
 	ctx->panel.prepare_prev_first = true;
 
 	ctx->panel.backlight = djn_hx83112b_create_backlight(dsi);
@@ -419,9 +388,8 @@ static int djn_hx83112b_probe(struct mipi_dsi_device *dsi)
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
-		dev_err(dev, "Failed to attach to DSI host: %d\n", ret);
 		drm_panel_remove(&ctx->panel);
-		return ret;
+		return dev_err_probe(dev, ret, "Failed to attach to DSI host\n");
 	}
 
 	return 0;

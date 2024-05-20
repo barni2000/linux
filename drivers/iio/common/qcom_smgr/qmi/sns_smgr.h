@@ -26,7 +26,7 @@
 /* TODO: find actual maximums */
 #define SNS_SMGR_ALL_SENSOR_INFO_MAX_LEN	0xf
 #define SNS_SMGR_SENSOR_TYPE_MAX_LEN		0xf
-#define SNS_SMGR_DATA4_MAX_LEN			0xf
+#define SNS_SMGR_DATA4_MAX_LEN			0x14
 #define SNS_SMGR_SAMPLES_MAX_LEN		0xff
 
 enum sns_smgr_buffering_action {

@@ -322,7 +322,7 @@ static void __exit qcom_smd_qrtr_exit(void)
 subsys_initcall(qcom_smd_qrtr_init);
 module_exit(qcom_smd_qrtr_exit);
 
-module_rpmsg_driver(qcom_smd_qrtr_driver);
+//module_rpmsg_driver(qcom_smd_qrtr_driver);
 
 MODULE_ALIAS("rpmsg:IPCRTR");
 MODULE_DESCRIPTION("Qualcomm IPC-Router SMD interface driver");

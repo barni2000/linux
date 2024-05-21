@@ -100,6 +100,7 @@
 		reg = <0x45>;
 
 		vcc-supply = <&pm8953_l10>;
+		vio-supply = <&pm8953_l5>;
 
 		status = "disabled";
 
@@ -404,7 +405,7 @@
 		drive-strength = <2>;
 		bias-pull-down;
 	};
-	
+
 	ts_reset_active: ts-reset-active-state {
 		pins = "gpio64";
 		function = "gpio";

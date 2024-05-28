@@ -11,7 +11,6 @@
 #include <dt-bindings/leds/common.h>
 #include "msm8917.dtsi"
 #include "pm8937.dtsi"
-#include "pmi8950.dtsi"
 
 / {
 	model = "Xiaomi Redmi 5A (riva)";
@@ -46,6 +45,7 @@
 				 <&gcc GCC_MDSS_PCLK0_CLK>,
 				 <&gcc GCC_MDSS_ESC0_CLK>;
 			power-domains = <&gcc MDSS_GDSC>;
+			status = "disabled";
 		};
 	};
 
@@ -92,6 +92,71 @@
 	};
 };
 
+&blsp_i2c2 {
+	status = "okay";
+
+	regulator@3e {
+		compatible = "ti,tps65132";
+		reg = <0x3e>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&tps65132_en_default>;
+
+		reg_lcd_pos: outp {
+			regulator-name = "outp";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			enable-gpios = <&tlmm 126 GPIO_ACTIVE_HIGH>;
+			regulator-active-discharge = <1>;
+		};
+
+		reg_lcd_neg: outn {
+			regulator-name = "outn";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			enable-gpios = <&tlmm 127 GPIO_ACTIVE_HIGH>;
+			regulator-active-discharge = <1>;
+		};
+	};
+};
+
+&dsi0 {
+	vdda-supply = <&pm8937_l2>;
+	vddio-supply = <&pm8937_l6>;
+        panel@0 {
+                compatible = "xiaomi,riva-ili9881c";
+                // compatible = "ugglite-panel";
+                reg = <0>;
+		/*pinctrl-0 = <&mdss_dsi_active>;
+		pinctrl-1 = <&mdss_dsi_suspend>;
+		pinctrl-names = "deafault", "sleep";*/
+                reset-gpios = <&tlmm 60 GPIO_ACTIVE_LOW>;
+
+		vsn-supply = <&reg_lcd_neg>;
+		vsp-supply = <&reg_lcd_pos>;
+
+                port {
+                        panel_in: endpoint {
+                                remote-endpoint = <&dsi0_out>;
+                        };
+                };
+        };
+};
+
+&dsi0_out {
+        data-lanes = <0 1 2 3>;
+        remote-endpoint = <&panel_in>;
+};
+
+&dsi_phy0 {
+	vddio-supply = <&pm8937_l6>;
+	qcom,dsi-phy-regulator-ldo-mode;
+};
+
+&pm8937_pwm {
+	status = "okay";
+};
+
 &pm8937_resin {
 	linux,code = <KEY_VOLUMEDOWN>;
 	status = "okay";
@@ -101,11 +166,9 @@
 	pm8937_s5: s5 {
 		regulator-min-microvolt = <1050000>;
 		regulator-max-microvolt = <1350000>;
+		regulator-always-on;
+		regulator-boot-on;
 	};
-};
-
-&pmi8950_usb_vbus {
-	status = "okay";
 };
 
 &rpm_requests {
@@ -225,6 +288,10 @@
 			regulator-max-microvolt = <1200000>;
 		};
 	};
+
+	usb_vbus: extcon-usb-dummy {
+		compatible = "linux,extcon-usb-dummy";
+	};
 };
 
 &sdhc_1 {
@@ -240,9 +307,18 @@
 	status = "okay";
 };
 
+&tlmm {
+	tps65132_en_default: tps65132_en_default {
+		function = "gpio";
+		pins = "gpio126", "gpio127";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+};
+
 &usb {
 	dr_mode = "peripheral";
-	extcon = <&pmi8950_usb_vbus>;
+	extcon = <&usb_vbus>;
 	status = "okay";
 };
 
@@ -250,5 +326,22 @@
 	vdd-supply = <&pm8937_l2>;
 	vdda1p8-supply = <&pm8937_l7>;
 	vdda3p3-supply = <&pm8937_l13>;
+	status = "okay";
+};
+
+&wcnss {
+	vddpx-supply = <&pm8937_l5>;
+	status = "okay";
+
+	iris {
+		compatible = "qcom,wcn3620";
+		vddxo-supply = <&pm8937_l7>;
+		vddrfa-supply = <&pm8937_l19>;
+		vddpa-supply = <&pm8937_l9>;
+		vdddig-supply = <&pm8937_l5>;
+	};
+};
+
+&wcnss_mem {
 	status = "okay";
 };

@@ -709,6 +709,8 @@
 				interrupt-parent = <&mdss>;
 				interrupts = <0>;
 
+				power-domains = <&gcc MDSS_GDSC>;
+
 				clocks = <&gcc GCC_MDSS_AHB_CLK>,
 					 <&gcc GCC_MDSS_AXI_CLK>,
 					 <&gcc GCC_MDSS_MDP_CLK>,
@@ -1556,6 +1558,7 @@
 			assigned-clocks = <&q6afecc LPASS_CLK_ID_INTERNAL_DIGITAL_CODEC_CORE
 						    LPASS_CLK_ATTRIBUTE_COUPLE_NO>;
 			assigned-clock-rates = <9600000>;
+			status = "disabled";
 		};
 
 		adsp: remoteproc@c200000 {

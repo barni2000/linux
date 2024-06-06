@@ -362,11 +362,11 @@
 	};
 };
 
-&dsi0 {
+&mdss_dsi0 {
 	status = "disabled";
 };
 
-&dsi_phy0 {
+&mdss_dsi0_phy {
 	status = "disabled";
 };
 
@@ -426,7 +426,7 @@
 &pm8916_vib {
 	status = "okay";
 };
- 
+
 &q6afedai {
 	dai@16 {
 		reg = <PRIMARY_MI2S_RX>;
@@ -475,7 +475,7 @@
 
 	status = "okay";
 };
- 
+
 &sound {
 	status = "okay";
 	model = "msm8916";
@@ -583,6 +583,11 @@
 };
 
 &wcnss {
+	status = "okay";
+};
+
+&wcnss_iris {
+	compatible = "qcom,wcn3620";
 	status = "okay";
 };
 

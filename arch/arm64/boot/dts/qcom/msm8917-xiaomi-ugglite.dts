@@ -82,7 +82,7 @@
 	gpio-keys {
 		compatible = "gpio-keys";
 
-		btn-volup {
+		button-volup {
 			label = "Volume Up";
 			linux,code = <KEY_VOLUMEUP>;
 			gpios = <&tlmm 91 GPIO_ACTIVE_LOW>;
@@ -143,7 +143,7 @@
 	};
 };
 
-&dsi0 {
+&mdss_dsi0 {
 	vdda-supply = <&pm8937_l2>;
 	vddio-supply = <&pm8937_l6>;
         panel@0 {
@@ -157,18 +157,18 @@
 
                 port {
                         panel_in: endpoint {
-                                remote-endpoint = <&dsi0_out>;
+                                remote-endpoint = <&mdss_dsi0_out>;
                         };
                 };
         };
 };
 
-&dsi0_out {
+&mdss_dsi0_out {
         data-lanes = <0 1 2 3>;
         remote-endpoint = <&panel_in>;
 };
 
-&dsi_phy0 {
+&mdss_dsi0_phy {
 	vddio-supply = <&pm8937_l6>;
 	qcom,dsi-phy-regulator-ldo-mode;
 };
@@ -359,7 +359,7 @@
 };
 
 &usb {
-	dr_mode = "peripherial";
+	dr_mode = "peripheral";
 	extcon = <&usb_vbus>;
 	interrupts = <GIC_SPI 134 IRQ_TYPE_LEVEL_HIGH>,
 		<GIC_SPI 140 IRQ_TYPE_LEVEL_HIGH>,
@@ -381,14 +381,14 @@
 &wcnss {
 	vddpx-supply = <&pm8937_l5>;
 	status = "okay";
+};
 
-	iris {
-		compatible = "qcom,wcn3620";
-		vddxo-supply = <&pm8937_l7>;
-		vddrfa-supply = <&pm8937_l19>;
-		vddpa-supply = <&pm8937_l9>;
-		vdddig-supply = <&pm8937_l5>;
-	};
+&wcnss_iris {
+	compatible = "qcom,wcn3620";
+	vddxo-supply = <&pm8937_l7>;
+	vddrfa-supply = <&pm8937_l19>;
+	vddpa-supply = <&pm8937_l9>;
+	vdddig-supply = <&pm8937_l5>;
 };
 
 &wcnss_mem {

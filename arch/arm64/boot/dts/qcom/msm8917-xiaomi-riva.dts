@@ -83,7 +83,7 @@
 	gpio-keys {
 		compatible = "gpio-keys";
 
-		btn-volup {
+		button-volup {
 			label = "Volume Up";
 			linux,code = <KEY_VOLUMEUP>;
 			gpios = <&tlmm 91 GPIO_ACTIVE_LOW>;
@@ -120,7 +120,21 @@
 	};
 };
 
-&dsi0 {
+&blsp_i2c3 {
+	status = "okay";
+
+	touchscreen@38 {
+		compatible = "edt,edt-ft5306";
+		reg = <0x38>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <65 0x2008>;
+		reset-gpios = <&tlmm 64 GPIO_ACTIVE_LOW>;
+		vcc-supply = <&pm8937_l10>;
+		iovcc-supply = <&pm8937_l5>;
+	};
+};
+
+&mdss_dsi0 {
 	vdda-supply = <&pm8937_l2>;
 	vddio-supply = <&pm8937_l6>;
         panel@0 {
@@ -137,18 +151,18 @@
 
                 port {
                         panel_in: endpoint {
-                                remote-endpoint = <&dsi0_out>;
+                                remote-endpoint = <&mdss_dsi0_out>;
                         };
                 };
         };
 };
 
-&dsi0_out {
+&mdss_dsi0_out {
         data-lanes = <0 1 2 3>;
         remote-endpoint = <&panel_in>;
 };
 
-&dsi_phy0 {
+&mdss_dsi0_phy {
 	vddio-supply = <&pm8937_l6>;
 	qcom,dsi-phy-regulator-ldo-mode;
 };
@@ -323,9 +337,8 @@
 };
 
 &usb_hs_phy {
-	vdd-supply = <&pm8937_l2>;
-	vdda1p8-supply = <&pm8937_l7>;
-	vdda3p3-supply = <&pm8937_l13>;
+	v1p8-supply = <&pm8937_l7>;
+	v3p3-supply = <&pm8937_l13>;
 	status = "okay";
 };
 
@@ -333,13 +346,14 @@
 	vddpx-supply = <&pm8937_l5>;
 	status = "okay";
 
-	iris {
-		compatible = "qcom,wcn3620";
-		vddxo-supply = <&pm8937_l7>;
-		vddrfa-supply = <&pm8937_l19>;
-		vddpa-supply = <&pm8937_l9>;
-		vdddig-supply = <&pm8937_l5>;
-	};
+};
+
+&wcnss_iris {
+	compatible = "qcom,wcn3620";
+	vddxo-supply = <&pm8937_l7>;
+	vddrfa-supply = <&pm8937_l19>;
+	vddpa-supply = <&pm8937_l9>;
+	vdddig-supply = <&pm8937_l5>;
 };
 
 &wcnss_mem {

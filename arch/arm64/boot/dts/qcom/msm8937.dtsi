@@ -332,6 +332,7 @@
 
 	cpu_opp_table_c0: opp-table-c0 {
 		compatible = "operating-points-v2";
+		opp-shared;
 
 		opp-960000000 {
 			opp-hz = /bits/ 64 <960000000>;
@@ -364,6 +365,7 @@
 
 	cpu_opp_table_c1: opp-table-c1 {
 		compatible = "operating-points-v2";
+		opp-shared;
 
 		opp-768000000 {
 			opp-hz = /bits/ 64 <768000000>;
@@ -388,11 +390,10 @@
 
 	timer {
 		compatible = "arm,armv8-timer";
-		interrupts = <GIC_PPI 2 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>,
-			     <GIC_PPI 3 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>,
-			     <GIC_PPI 4 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>,
-			     <GIC_PPI 1 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>;
-		clock-frequency = <19200000>;
+		interrupts = <GIC_PPI 2 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>,
+			     <GIC_PPI 3 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>,
+			     <GIC_PPI 4 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>,
+			     <GIC_PPI 1 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>;
 	};
 
 
@@ -400,7 +401,7 @@
 
 	pmu {
 		compatible = "arm,cortex-a53-pmu";
-		interrupts = <GIC_PPI 7 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_HIGH)>;
+		interrupts = <GIC_PPI 7 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_HIGH)>;
 	};
 
 	psci {
@@ -761,13 +762,13 @@
 
 		a53pll_c0: clock@b116000 {
 			compatible = "qcom,msm8939-a53pll";
-			reg = <0x0b116000 0x34>;
+			reg = <0x0b116000 0x40>;
 			#clock-cells = <0>;
 		};
 
 		a53pll_c1: clock@b016000 {
 			compatible = "qcom,msm8939-a53pll";
-			reg = <0x0b016000 0x34>;
+			reg = <0x0b016000 0x40>;
 			#clock-cells = <0>;
 		};
 
@@ -1605,7 +1606,6 @@
 			ranges;
 			compatible = "arm,armv7-timer-mem";
 			reg = <0x0b120000 0x1000>;
-			clock-frequency = <19200000>;
 
 			frame@b121000 {
 				frame-number = <0>;

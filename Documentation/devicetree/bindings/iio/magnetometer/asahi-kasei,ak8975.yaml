@@ -18,7 +18,9 @@ properties:
           - asahi-kasei,ak09911
           - asahi-kasei,ak09912
           - asahi-kasei,ak09916
-          - asahi-kasei,ak09918
+      - items:
+          - const: asahi-kasei,ak09918
+          - const: asahi-kasei,ak09912
       - enum:
           - ak8975
           - ak8963

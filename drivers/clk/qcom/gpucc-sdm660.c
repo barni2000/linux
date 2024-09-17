@@ -52,9 +52,9 @@ static struct clk_branch gpucc_cxo_clk = {
 };
 
 static const struct pll_vco gpu_vco[] = {
-	{ 1000000000, 2000000000, 0 },
-	{ 500000000,  1000000000, 2 },
 	{ 250000000,   500000000, 3 },
+	{ 500000000,  1000000000, 2 },
+	{ 1000000000, 2000000000, 0 },
 };
 
 static struct clk_alpha_pll gpu_pll0_pll_out_main = {
@@ -101,18 +101,47 @@ static const struct clk_parent_data gpucc_parent_data_1[] = {
 	{ .fw_name = "gcc_gpu_gpll0_clk" },
 };
 
+static const struct freq_tbl ftbl_gpu_cc_gx_gfx3d_clk_src[] = {
+	F_GFX( 19200000, 0,  1, 0, 0,         0),
+	F_GFX(160000000, 0,  2, 0, 0,  640000000),
+	F_GFX(266000000, 0,  2, 0, 0,  532000000),
+	F_GFX(370000000, 0,  2, 0, 0,  740000000),
+	F_GFX(430000000, 0,  2, 0, 0,  860000000),
+	F_GFX(465000000, 0,  2, 0, 0,  930000000),
+	F_GFX(585000000, 0,  2, 0, 0, 1170000000),
+	F_GFX(588000000, 0,  2, 0, 0, 1176000000),
+	F_GFX(647000000, 0,  2, 0, 0, 1294000000),
+	F_GFX(700000000, 0,  2, 0, 0, 1400000000),
+	F_GFX(750000000, 0,  2, 0, 0, 1500000000),
+	{ }
+};
+
+static const struct freq_tbl ftbl_gfx3d_clk_src_630[] = {
+	F_GFX( 19200000, 0,  1, 0, 0,         0),
+	F_GFX(160000000, 0,  2, 0, 0,  640000000),
+	F_GFX(240000000, 0,  2, 0, 0,  480000000),
+	F_GFX(370000000, 0,  2, 0, 0,  740000000),
+	F_GFX(465000000, 0,  2, 0, 0,  930000000),
+	F_GFX(588000000, 0,  2, 0, 0, 1176000000),
+	F_GFX(647000000, 0,  2, 0, 0, 1294000000),
+	F_GFX(648000000, 0,  2, 0, 0, 1296000000),
+	F_GFX(700000000, 0,  2, 0, 0, 1400000000),
+	F_GFX(775000000, 0,  2, 0, 0, 1550000000),
+	{ }
+};
+
 static struct clk_rcg2_gfx3d gfx3d_clk_src = {
-	.div = 2,
 	.rcg = {
 		.cmd_rcgr = 0x1070,
 		.mnd_width = 0,
 		.hid_width = 5,
 		.parent_map = gpucc_parent_map_1,
+		.freq_tbl = ftbl_gpu_cc_gx_gfx3d_clk_src,
 		.clkr.hw.init = &(struct clk_init_data){
 			.name = "gfx3d_clk_src",
 			.parent_data = gpucc_parent_data_1,
 			.num_parents = ARRAY_SIZE(gpucc_parent_data_1),
-			.ops = &clk_gfx3d_ops,
+			.ops = &clk_gfx3d_src_ops,
 			.flags = CLK_SET_RATE_PARENT | CLK_OPS_PARENT_ENABLE,
 		},
 	},
@@ -314,20 +343,27 @@ static int gpucc_sdm660_probe(struct platform_device *pdev)
 		.vco_val = 0x2 << 20,
 		.vco_mask = 0x3 << 20,
 		.main_output_mask = 0x1,
+		.l = 0x29,
+		.alpha_hi = 0xaa,
 	};
+
+	bool is_630 = of_device_is_compatible(pdev->dev.of_node,
+					"qcom,gpucc-sdm630");
+	if (is_630) {
+		// gpu_pll0_pll_out_main.clkr.hw.init->rate_max[VDD_DIG_LOW_L1]
+		//				= 1550000000;
+		// gpu_pll1_pll_out_main.clkr.hw.init->rate_max[VDD_DIG_LOW_L1]
+		//				= 1550000000;
+		/* Add new frequency table */
+		gfx3d_clk_src.rcg.freq_tbl = ftbl_gfx3d_clk_src_630;
+	}
 
 	regmap = qcom_cc_map(pdev, &gpucc_sdm660_desc);
 	if (IS_ERR(regmap))
 		return PTR_ERR(regmap);
 
 	/* 800MHz configuration for GPU PLL0 */
-	gpu_pll_config.l = 0x29;
-	gpu_pll_config.alpha_hi = 0xaa;
 	clk_alpha_pll_configure(&gpu_pll0_pll_out_main, regmap, &gpu_pll_config);
-
-	/* 740MHz configuration for GPU PLL1 */
-	gpu_pll_config.l = 0x26;
-	gpu_pll_config.alpha_hi = 0x8a;
 	clk_alpha_pll_configure(&gpu_pll1_pll_out_main, regmap, &gpu_pll_config);
 
 	return qcom_cc_really_probe(&pdev->dev, &gpucc_sdm660_desc, regmap);

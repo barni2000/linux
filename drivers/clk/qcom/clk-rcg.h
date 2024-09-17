@@ -8,6 +8,7 @@
 #include "clk-regmap.h"
 
 #define F(f, s, h, m, n) { (f), (s), (2 * (h) - 1), (m), (n) }
+#define F_GFX(f, s, h, m, n, sf) { (f), (s), (2 * (h) - 1), (m), (n), (sf) }
 
 struct freq_tbl {
 	unsigned long freq;
@@ -15,6 +16,7 @@ struct freq_tbl {
 	u8 pre_div;
 	u16 m;
 	u16 n;
+	unsigned long src_freq;
 };
 
 #define C(s, h, m, n) { (s), (2 * (h) - 1), (m), (n) }
@@ -32,6 +34,7 @@ struct freq_multi_tbl {
 	unsigned long freq;
 	size_t num_confs;
 	const struct freq_conf *confs;
+	unsigned long src_freq;
 };
 
 /**
@@ -197,6 +200,7 @@ extern const struct clk_ops clk_byte_ops;
 extern const struct clk_ops clk_byte2_ops;
 extern const struct clk_ops clk_pixel_ops;
 extern const struct clk_ops clk_gfx3d_ops;
+extern const struct clk_ops clk_gfx3d_src_ops;
 extern const struct clk_ops clk_rcg2_shared_ops;
 extern const struct clk_ops clk_rcg2_shared_no_init_park_ops;
 extern const struct clk_ops clk_dp_ops;

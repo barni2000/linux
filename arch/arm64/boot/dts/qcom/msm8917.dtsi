@@ -529,20 +529,141 @@
 			#address-cells = <1>;
 			#size-cells = <1>;
 
-			tsens_caldata: caldata@d0 {
-				reg = <0x01d8 0x14>;
+			tsens_base1: base1@1d8 {
+				reg = <0x1d8 1>;
+				bits = <0 8>;
+			};
+			tsens_s5_p1: s5-p1@1d9 {
+				reg = <0x1d9 1>;
+				bits = <0 6>;
+			};
+			tsens_s5_p2: s5-p2@1d9 {
+				reg = <0x1d9 2>;
+				bits = <6 6>;
+			};
+			tsens_base2: base2@1dc {
+				reg = <0x1dc 1>;
+				bits = <0 8>;
+			};
+			tsens_mode: mode@210 {
+				reg = <0x210 1>;
+				bits = <0 3>;
+			};
+			tsens_s0_p1: s0-p1@210 {
+				reg = <0x210 2>;
+				bits = <3 6>;
+			};
+			tsens_s0_p2: s0-p2@211 {
+				reg = <0x211 1>;
+				bits = <1 6>;
+			};
+			tsens_s1_p1: s1-p1@211 {
+				reg = <0x211 2>;
+				bits = <7 6>;
+			};
+			tsens_s1_p2: s1-p2@212 {
+				reg = <0x212 2>;
+				bits = <5 6>;
+			};
+			tsens_s2_p1: s2-p1@212 {
+				reg = <0x212 2>;
+				bits = <3 6>;
+			};
+			tsens_s2_p2: s2-p2@214 {
+				reg = <0x214 1>;
+				bits = <1 6>;
+			};
+			tsens_s3_p1: s3-p1@214 {
+				reg = <0x214 2>;
+				bits = <7 6>;
+			};
+			tsens_s3_p2: s3-p2@215 {
+				reg = <0x215 2>;
+				bits = <5 6>;
+			};
+			tsens_s4_p1: s4-p1@216 {
+				reg = <0x216 2>;
+				bits = <3 6>;
+			};
+			tsens_s4_p2: s4-p2@217 {
+				reg = <0x217 1>;
+				bits = <1 6>;
+			};
+			tsens_s6_p1: s6-p1@1da {
+				reg = <0x1da 2>;
+				bits = <4 6>;
+			};
+			tsens_s6_p2: s6-p2@1db {
+				reg = <0x1db 1>;
+				bits = <2 6>;
+			};
+			tsens_s7_p1: s7-p1@1dc {
+				reg = <0x1dc 1>;
+				bits = <0 6>;
+			};
+			tsens_s7_p2: s7-p2@1dc {
+				reg = <0x1dc 2>;
+				bits = <6 6>;
+			};
+			tsens_s8_p1: s8-p1@1dd {
+				reg = <0x1dd 2>;
+				bits = <4 6>;
+			};
+			tsens_s8_p2: s8-p2@1de {
+				reg = <0x1de 1>;
+				bits = <2 6>;
+			};
+			tsens_s9_p1: s9-p1@230{
+				reg = <0x230 1>;
+				bits = <0 6>;
+			};
+			tsens_s9_p2: s9-p2@230 {
+				reg = <0x230 2>;
+				bits = <6 6>;
+			};
+			tsens_s10_p1: s10-p1@231 {
+				reg = <0x231 2>;
+				bits = <4 6>;
+			};
+			tsens_s10_p2: s10-p2@232 {
+				reg = <0x232 1>;
+				bits = <2 6>;
 			};
 		};
 
 		tsens: thermal-sensor@4a9000 {
-			compatible = "qcom,msm8917-tsens", "qcom,tsens-v1";
+			compatible = "qcom,msm8937-tsens", "qcom,tsens-v1";
 			reg = <0x004a9000 0x1000>,
 			      <0x004a8000 0x1000>;
-			nvmem-cells = <&tsens_caldata>;
-			nvmem-cell-names = "calib";
-			#qcom,sensors = <10>;
 			interrupts = <GIC_SPI 184 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "uplow";
+			nvmem-cells = <&tsens_mode>,
+				      <&tsens_base1>, <&tsens_base2>,
+				      <&tsens_s0_p1>, <&tsens_s0_p2>,
+				      <&tsens_s1_p1>, <&tsens_s1_p2>,
+				      <&tsens_s2_p1>, <&tsens_s2_p2>,
+				      <&tsens_s3_p1>, <&tsens_s3_p2>,
+				      <&tsens_s4_p1>, <&tsens_s4_p2>,
+				      <&tsens_s5_p1>, <&tsens_s5_p2>,
+				      <&tsens_s6_p1>, <&tsens_s6_p2>,
+				      <&tsens_s7_p1>, <&tsens_s7_p2>,
+				      <&tsens_s8_p1>, <&tsens_s8_p2>,
+				      <&tsens_s9_p1>, <&tsens_s9_p2>,
+				      <&tsens_s10_p1>, <&tsens_s10_p2>;
+			nvmem-cell-names = "mode",
+					   "base1", "base2",
+					   "s0_p1", "s0_p2",
+					   "s1_p1", "s1_p2",
+					   "s2_p1", "s2_p2",
+					   "s3_p1", "s3_p2",
+					   "s4_p1", "s4_p2",
+					   "s5_p1", "s5_p2",
+					   "s6_p1", "s6_p2",
+					   "s7_p1", "s7_p2",
+					   "s8_p1", "s8_p2",
+					   "s9_p1", "s9_p2",
+					   "s10_p1", "s10_p2";
+			#qcom,sensors = <11>;
 			#thermal-sensor-cells = <1>;
 		};
 

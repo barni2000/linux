@@ -20,6 +20,7 @@ obj-$(CONFIG_DRM_PANEL_HUAWEI_MILAN_TIANMA_OTM1906C) += panel-huawei-milan-tianm
 obj-$(CONFIG_DRM_PANEL_LENOVO_CD_18781Y_FT8201) += panel-lenovo-cd-18781y-ft8201.o
 obj-$(CONFIG_DRM_PANEL_LENOVO_CD_18781Y_HX83100A) += panel-lenovo-cd-18781y-hx83100a.o
 obj-$(CONFIG_DRM_PANEL_LENOVO_CD_18781Y_JD9365) += panel-lenovo-cd-18781y-jd9365.o
+obj-$(CONFIG_DRM_PANEL_LENOVO_KUNTAO_549) += panel-lenovo-kuntao-549.o
 obj-$(CONFIG_DRM_PANEL_MDSS_FT8716_FHD) += panel-mdss-ft8716-fhd.o
 obj-$(CONFIG_DRM_PANEL_MDSS_ILI7807_FHD) += panel-mdss-ili7807-fhd.o
 obj-$(CONFIG_DRM_PANEL_MDSS_ILI7807_FHDPLUS) += panel-mdss-ili7807-fhdplus.o

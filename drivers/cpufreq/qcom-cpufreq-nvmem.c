@@ -410,7 +410,8 @@ static const struct qcom_cpufreq_match_data match_data_kryo = {
 
 static const struct qcom_cpufreq_match_data match_data_kryo_cpr = {
 	.get_version = qcom_cpufreq_kryo_name_version,
-	.genpd_names = generic_genpd_names,
+	.pd_names = (const char *[]) { "perf" },
+	.num_pd_names = 1,
 };
 
 static const struct qcom_cpufreq_match_data match_data_krait = {

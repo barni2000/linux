@@ -109,6 +109,14 @@
 	status = "okay";
 };
 
+&ibb {
+	qcom,discharge-resistor-kohms = <32>;
+};
+
+&lab {
+	qcom,soft-start-us = <800>;
+};
+
 &mdss_dsi0 {
 	status = "okay";
 
@@ -127,8 +135,8 @@
 
 		reset-gpios = <&tlmm 61 GPIO_ACTIVE_LOW>;
 
-		vsp-supply = <&lab_vreg>;
-		vsn-supply = <&ibb_vreg>;
+		vsp-supply = <&lab>;
+		vsn-supply = <&ibb>;
 
 		port {
 			panel_in: endpoint {

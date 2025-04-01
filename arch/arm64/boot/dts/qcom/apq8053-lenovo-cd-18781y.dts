@@ -205,8 +205,8 @@
 		backlight-gpios = <&tlmm 95 GPIO_ACTIVE_HIGH>;
 
 		avdd-supply = <&panel_avdd>;
-		vsp-supply = <&lab_vreg>;
-		vsn-supply = <&ibb_vreg>;
+		vsp-supply = <&lab>;
+		vsn-supply = <&ibb>;
 
 		status = "okay";
 
@@ -236,6 +236,10 @@
 	vdda-phy-dpdm-supply = <&pm8953_l13>;
 
 	status = "okay";
+};
+
+&ibb {
+	qcom,discharge-resistor-kohms = <32>;
 };
 
 &i2c_1 {
@@ -303,6 +307,10 @@
 
 		status = "disabled";
 	};
+};
+
+&lab {
+	qcom,soft-start-us = <800>;
 };
 
 &mdss {

@@ -32,52 +32,8 @@
 	};
 };
 
-&mdss_dsi0 {
-	vdda-supply = <&pm8953_s3>;
-	vddio-supply = <&pm8953_l6>;
-
-	pinctrl-0 = <&pmx_mdss_default &mdss_te_default>;
-	pinctrl-1 = <&pmx_mdss_sleep &mdss_te_default>;
-	pinctrl-names = "default", "sleep";
-
-	status = "okay";
-
-	panel: panel@0 {
-		reg = <0>;
-
-		backlight = <&pmi8950_wled>;
-
-		reset-gpios = <&tlmm 61 GPIO_ACTIVE_LOW>;
-
-		vsp-supply = <&lab_vreg>;
-		vsn-supply = <&ibb_vreg>;
-
-		port {
-			panel_in: endpoint {
-				remote-endpoint = <&mdss_dsi0_out>;
-			};
-		};
-	};
-};
-
-&mdss_dsi0_out {
-	data-lanes = <0 1 2 3>;
-	remote-endpoint = <&panel_in>;
-};
-
-&mdss_dsi0_phy {
-	vddio-supply = <&pm8953_l6>;
-	vcca-supply = <&pm8953_l3>;
-
-	status = "okay";
-};
-
-&hsusb_phy {
-	vdd-supply = <&pm8953_l3>;
-	vdda-pll-supply = <&pm8953_l7>;
-	vdda-phy-dpdm-supply = <&pm8953_l13>;
-
-	status = "okay";
+&ibb {
+	qcom,discharge-resistor-kohms = <32>;
 };
 
 &i2c_2 {
@@ -191,11 +147,63 @@
 	};
 };
 
+&lab {
+	qcom,soft-start-us = <800>;
+};
+
 &lpass {
 	status = "okay";
 };
 
 &mdss {
+	status = "okay";
+};
+
+&mdss_dsi0 {
+	vdda-supply = <&pm8953_s3>;
+	vddio-supply = <&pm8953_l6>;
+
+	pinctrl-0 = <&pmx_mdss_default &mdss_te_default>;
+	pinctrl-1 = <&pmx_mdss_sleep &mdss_te_default>;
+	pinctrl-names = "default", "sleep";
+
+	status = "okay";
+
+	panel: panel@0 {
+		reg = <0>;
+
+		backlight = <&pmi8950_wled>;
+
+		reset-gpios = <&tlmm 61 GPIO_ACTIVE_LOW>;
+
+		vsp-supply = <&lab>;
+		vsn-supply = <&ibb>;
+
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&mdss_dsi0_out>;
+			};
+		};
+	};
+};
+
+&mdss_dsi0_out {
+	data-lanes = <0 1 2 3>;
+	remote-endpoint = <&panel_in>;
+};
+
+&mdss_dsi0_phy {
+	vddio-supply = <&pm8953_l6>;
+	vcca-supply = <&pm8953_l3>;
+
+	status = "okay";
+};
+
+&hsusb_phy {
+	vdd-supply = <&pm8953_l3>;
+	vdda-pll-supply = <&pm8953_l7>;
+	vdda-phy-dpdm-supply = <&pm8953_l13>;
+
 	status = "okay";
 };
 

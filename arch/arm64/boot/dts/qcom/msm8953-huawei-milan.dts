@@ -90,47 +90,6 @@
 	};
 };
 
-&mdss_dsi0 {
-	vdda-supply = <&pm8953_s3>;
-	vddio-supply = <&pm8953_l6>;
-
-	status = "okay";
-	
-	panel: panel@0 {
-		compatible = "huawei,milan-panel";
-		reg = <0>;
-
-		backlight = <&pmi8950_wled>;
-
-		reset-gpios = <&tlmm 61 GPIO_ACTIVE_LOW>;
-
-		pinctrl-0 = <&pmx_mdss_default>;
-		pinctrl-1 = <&pmx_mdss_sleep>;
-		pinctrl-names = "default", "sleep";
-
-		vsp-supply = <&lab_vreg>;
-		vsn-supply = <&ibb_vreg>;
-
-		port {
-			panel_in: endpoint {
-				remote-endpoint = <&mdss_dsi0_out>;
-			};
-		};
-	};
-};
-
-&mdss_dsi0_out {
-	data-lanes = <0 1 2 3>;
-	remote-endpoint = <&panel_in>;
-};
-
-&mdss_dsi0_phy {
-	vddio-supply = <&pm8953_l6>;
-	vcca-supply = <&pm8953_l3>;
-
-	status = "okay";
-};
-
 &hsusb_phy {
 	vdd-supply = <&pm8953_l3>;
 	vdda-pll-supply = <&pm8953_l7>;
@@ -139,8 +98,8 @@
 	status = "okay";
 };
 
-&i2c_2 {
-	status = "disable";
+&ibb {
+	qcom,discharge-resistor-kohms = <32>;
 };
 
 &i2c_3 {
@@ -177,7 +136,7 @@
 
 		pinctrl-0 = <&ts_reset_active &ts_int_active>;
 		pinctrl-1 = <&ts_reset_suspend &ts_int_suspend>;
-		pinctrl-names = "active","sleep";
+		pinctrl-names = "default", "sleep";
 
 		syna,reset-delay-ms = <200>;
 		syna,startup-delay-ms = <500>;
@@ -216,11 +175,56 @@
 	};
 };
 
+&lab {
+	qcom,soft-start-us = <800>;
+};
+
 &lpass {
 	status = "okay";
 };
 
 &mdss {
+	status = "okay";
+};
+
+&mdss_dsi0 {
+	vdda-supply = <&pm8953_s3>;
+	vddio-supply = <&pm8953_l6>;
+
+	pinctrl-0 = <&pmx_mdss_default>;
+	pinctrl-1 = <&pmx_mdss_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	status = "okay";
+
+	panel: panel@0 {
+		compatible = "huawei,milan-panel";
+		reg = <0>;
+
+		backlight = <&pmi8950_wled>;
+
+		reset-gpios = <&tlmm 61 GPIO_ACTIVE_LOW>;
+
+		vsp-supply = <&lab>;
+		vsn-supply = <&ibb>;
+
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&mdss_dsi0_out>;
+			};
+		};
+	};
+};
+
+&mdss_dsi0_out {
+	data-lanes = <0 1 2 3>;
+	remote-endpoint = <&panel_in>;
+};
+
+&mdss_dsi0_phy {
+	vddio-supply = <&pm8953_l6>;
+	vcca-supply = <&pm8953_l3>;
+
 	status = "okay";
 };
 
@@ -230,7 +234,6 @@
 
 	status = "okay";
 };
-
 
 &pm8953_resin {
 	linux,code = <KEY_VOLUMEDOWN>;

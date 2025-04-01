@@ -57,6 +57,14 @@
 	};
 };
 
+&ibb {
+	qcom,discharge-resistor-kohms = <32>;
+};
+
+&lab {
+	qcom,soft-start-us = <800>;
+};
+
 &mdss {
 	status = "okay";
 };
@@ -72,8 +80,8 @@
 		reg = <0>;
 
 		backlight = <&pmi8950_wled>;
-		vsp-supply = <&lab_vreg>;
-		vsn-supply = <&ibb_vreg>;
+		vsp-supply = <&lab>;
+		vsn-supply = <&ibb>;
 		reset-gpios = <&tlmm 61 GPIO_ACTIVE_LOW>;
 
 		pinctrl-names = "default";

@@ -3,17 +3,11 @@
 
 #include <linux/device.h>
 #include <linux/interrupt.h>
-#include <linux/kernel.h>
-#include <linux/math64.h>
-#include <linux/module.h>
 #include <linux/of_address.h>
-#include <linux/of_device.h>
 #include <linux/of_irq.h>
 #include <linux/platform_device.h>
 #include <linux/power_supply.h>
 #include <linux/regmap.h>
-#include <linux/types.h>
-#include <linux/workqueue.h>
 
 /* SOC */
 #define BATT_MONOTONIC_SOC		0x009
@@ -28,14 +22,10 @@
 #define PARAM_ADDR_BATT_CURRENT		0x1a2
 
 /* MEMIF */
-#define MEM_INTF_STS			0x410
-#define MEM_INTF_CFG			0x450
-#define MEM_INTF_CTL			0x451
 #define MEM_INTF_IMA_CFG		0x452
 #define MEM_INTF_IMA_EXP_STS		0x455
 #define MEM_INTF_IMA_HW_STS		0x456
 #define MEM_INTF_IMA_ERR_STS		0x45f
-#define MEM_INTF_IMA_BYTE_EN		0x460
 #define MEM_INTF_ADDR_LSB		0x461
 #define MEM_INTF_RD_DATA0		0x467
 #define MEM_INTF_WR_DATA0		0x463
@@ -43,44 +33,14 @@
 #define MEM_IF_DMA_CTL			0x471
 
 /* SRAM addresses */
-#define TEMP_THRESHOLD			0x454
-#define BATT_TEMP			0x550
-#define BATT_VOLTAGE_CURRENT		0x5cc
 
 #define BATT_TEMP_LSB_MASK		GENMASK(7, 0)
 #define BATT_TEMP_MSB_MASK		GENMASK(2, 0)
-
-#define BATT_TEMP_JEITA_COLD		100
-#define BATT_TEMP_JEITA_COOL		50
-#define BATT_TEMP_JEITA_WARM		400
-#define BATT_TEMP_JEITA_HOT		450
-
-#define MEM_INTF_AVAIL			BIT(0)
-#define MEM_INTF_CTL_BURST		BIT(7)
-#define MEM_INTF_CTL_WR_EN		BIT(6)
-#define RIF_MEM_ACCESS_REQ		BIT(7)
-
-#define MEM_IF_TIMEOUT_MS		5000
-#define SRAM_ACCESS_RELEASE_DELAY_MS	500
-
-struct qcom_fg_chip;
-
-struct qcom_fg_ops {
-	int (*get_capacity)(struct qcom_fg_chip *chip, int *);
-	int (*get_temperature)(struct qcom_fg_chip *chip, int *);
-	int (*get_current)(struct qcom_fg_chip *chip, int *);
-	int (*get_voltage)(struct qcom_fg_chip *chip, int *);
-	int (*get_temp_threshold)(struct qcom_fg_chip *chip,
-			enum power_supply_property psp, int *);
-	int (*set_temp_threshold)(struct qcom_fg_chip *chip,
-			enum power_supply_property psp, int);
-};
 
 struct qcom_fg_chip {
 	struct device *dev;
 	unsigned int base;
 	struct regmap *regmap;
-	const struct qcom_fg_ops *ops;
 	struct notifier_block nb;
 
 	struct power_supply *batt_psy;
@@ -88,14 +48,6 @@ struct qcom_fg_chip {
 	struct power_supply *chg_psy;
 	int status;
 	struct delayed_work status_changed_work;
-
-	struct completion sram_access_granted;
-	struct completion sram_access_revoked;
-	struct workqueue_struct *sram_wq;
-	struct delayed_work sram_release_access_work;
-	spinlock_t sram_request_lock;
-	spinlock_t sram_rw_lock;
-	int sram_requests;
 };
 
 /************************
@@ -177,297 +129,6 @@ static int qcom_fg_masked_write(struct qcom_fg_chip *chip, u16 addr, u8 mask, u8
 	return qcom_fg_write(chip, &reg, addr, 1);
 }
 
-/************************
- * SRAM FUNCTIONS
- * **********************/
-
-/**
- * @brief qcom_fg_sram_check_access() - Check if SRAM is accessible
- *
- * @param chip Pointer to chip
- * @return bool true if accessible, false otherwise
- */
-static bool qcom_fg_sram_check_access(struct qcom_fg_chip *chip)
-{
-	u8 mem_if_status;
-	int ret;
-
-	ret = qcom_fg_read(chip, &mem_if_status,
-		MEM_INTF_STS, 1);
-
-	if (ret || !(mem_if_status & MEM_INTF_AVAIL))
-		return false;
-
-	ret = qcom_fg_read(chip, &mem_if_status,
-		MEM_INTF_CFG, 1);
-
-	if (ret)
-		return false;
-
-	return !!(mem_if_status & RIF_MEM_ACCESS_REQ);
-}
-
-/**
- * @brief qcom_fg_sram_request_access() - Request access to SRAM and wait for it
- * 
- * @param chip Pointer to chip
- * @return int 0 on success, negative errno on error
- */
-static int qcom_fg_sram_request_access(struct qcom_fg_chip *chip)
-{
-	bool sram_accessible;
-	int ret;
-
-	spin_lock(&chip->sram_request_lock);
-
-	sram_accessible = qcom_fg_sram_check_access(chip);
-
-	dev_vdbg(chip->dev, "Requesting SRAM access, current state: %d, requests: %d\n",
-		sram_accessible, chip->sram_requests);
-
-	if (!sram_accessible && chip->sram_requests == 0) {
-		ret = qcom_fg_masked_write(chip, MEM_INTF_CFG,
-				RIF_MEM_ACCESS_REQ, RIF_MEM_ACCESS_REQ);
-		if (ret) {
-			dev_err(chip->dev,
-				"Failed to set SRAM access request bit: %d\n", ret);
-
-			spin_unlock(&chip->sram_request_lock);
-			return ret;
-		}
-	}
-
-	chip->sram_requests++;
-
-	spin_unlock(&chip->sram_request_lock);
-
-	/* Wait to get access to SRAM, and try again if interrupted */
-	do {
-		ret = wait_for_completion_interruptible_timeout(
-			&chip->sram_access_granted,
-			msecs_to_jiffies(MEM_IF_TIMEOUT_MS));
-	} while(ret == -ERESTARTSYS);
-
-	if (ret <= 0) {
-		ret = -ETIMEDOUT;
-
-		spin_lock(&chip->sram_request_lock);
-		chip->sram_requests--;
-		spin_unlock(&chip->sram_request_lock);
-	} else {
-		ret = 0;
-
-		reinit_completion(&chip->sram_access_revoked);
-	}
-
-	return ret;
-}
-
-/**
- * @brief qcom_fg_sram_release_access() - Release access to SRAM
- *
- * @param chip Pointer to chip
- * @return int 0 on success, negative errno on error
- */
-static void qcom_fg_sram_release_access(struct qcom_fg_chip *chip)
-{
-	spin_lock(&chip->sram_request_lock);
-
-	chip->sram_requests--;
-
-	if(WARN(chip->sram_requests < 0,
-			"sram_requests=%d, cannot be negative! resetting to 0.\n",
-			chip->sram_requests))
-		chip->sram_requests = 0;
-
-	if(chip->sram_requests == 0)
-		/* Schedule access release */
-		queue_delayed_work(chip->sram_wq, &chip->sram_release_access_work,
-			msecs_to_jiffies(SRAM_ACCESS_RELEASE_DELAY_MS));
-
-	spin_unlock(&chip->sram_request_lock);
-}
-
-static void qcom_fg_sram_release_access_worker(struct work_struct *work)
-{
-	struct qcom_fg_chip *chip;
-	bool wait = false;
-	int ret;
-
-	chip = container_of(work, struct qcom_fg_chip, sram_release_access_work.work);
-
-	spin_lock(&chip->sram_request_lock);
-
-	/* Request access release if there are still no access requests */
-	if(chip->sram_requests == 0) {
-		qcom_fg_masked_write(chip, MEM_INTF_CFG, RIF_MEM_ACCESS_REQ, 0);
-		wait = true;
-	}
-
-	spin_unlock(&chip->sram_request_lock);
-
-	if(!wait)
-		return;
-
-	/* Wait for SRAM access to be released, and try again if interrupted */
-	do {
-		ret = wait_for_completion_interruptible_timeout(
-			&chip->sram_access_revoked,
-			msecs_to_jiffies(MEM_IF_TIMEOUT_MS));
-	} while(ret == -ERESTARTSYS);
-
-	reinit_completion(&chip->sram_access_granted);
-}
-
-/**
- * @brief qcom_fg_sram_config_access() - Configure access to SRAM
- *
- * @param chip Pointer to chip
- * @param write 0 for read access, 1 for write access
- * @param burst 1 to access mutliple addresses successively
- * @return int 0 on success, negative errno on error
- */
-static int qcom_fg_sram_config_access(struct qcom_fg_chip *chip,
-		bool write, bool burst)
-{
-	u8 intf_ctl;
-	int ret;
-
-	intf_ctl = (write ? MEM_INTF_CTL_WR_EN : 0)
-			| (burst ? MEM_INTF_CTL_BURST : 0);
-
-	ret = qcom_fg_write(chip, &intf_ctl,
-			MEM_INTF_CTL, 1);
-	if (ret) {
-		dev_err(chip->dev, "Failed to configure SRAM access: %d\n", ret);
-		return ret;
-	}
-
-	return 0;
-}
-
-/**
- * @brief qcom_fg_sram_read() - Read data from SRAM
- *
- * @param chip Pointer to chip
- * @param val Pointer to read values into
- * @param addr Address to read from
- * @param len Number of bytes to read
- * @return int 0 on success, negative errno on error
- */
-static int qcom_fg_sram_read(struct qcom_fg_chip *chip,
-		u8 *val, u16 addr, int len, int offset)
-{
-	u8 *rd_data = val;
-	int ret = 0;
-
-	ret = qcom_fg_sram_request_access(chip);
-	if (ret) {
-		dev_err(chip->dev, "Failed to request SRAM access: %d", ret);
-		return ret;
-	}
-
-	spin_lock(&chip->sram_rw_lock);
-
-	dev_vdbg(chip->dev,
-		"Reading address 0x%x with offset %d of length %d from SRAM",
-		addr, len, offset);
-
-	ret = qcom_fg_sram_config_access(chip, 0, (len > 4));
-	if (ret) {
-		dev_err(chip->dev, "Failed to configure SRAM access: %d", ret);
-		goto out;
-	}
-
-	while(len > 0) {
-		/* Set SRAM address register */
-		ret = qcom_fg_write(chip, (u8 *) &addr,
-				MEM_INTF_ADDR_LSB, 2);
-		if (ret) {
-			dev_err(chip->dev, "Failed to set SRAM address: %d", ret);
-			goto out;
-		}
-
-		ret = qcom_fg_read(chip, rd_data,
-				MEM_INTF_RD_DATA0 + offset, len);
-
-		addr += 4;
-
-		if (ret)
-			goto out;
-
-		rd_data += 4 - offset;
-		len -= 4 - offset;
-		offset = 0;
-	}
-out:
-	spin_unlock(&chip->sram_rw_lock);
-	qcom_fg_sram_release_access(chip);
-
-	return ret;
-}
-
-/**
- * @brief qcom_fg_sram_write() - Write data to SRAM
- *
- * @param chip Pointer to chip
- * @param val Pointer to write values from
- * @param addr Address to write to
- * @param len Number of bytes to write
- * @return int 0 on success, negative errno on error
- */
-static int qcom_fg_sram_write(struct qcom_fg_chip *chip,
-		u8 *val, u16 addr, int len, int offset)
-{
-	u8 *wr_data = val;
-	int ret;
-
-	ret = qcom_fg_sram_request_access(chip);
-	if (ret) {
-		dev_err(chip->dev, "Failed to request SRAM access: %d", ret);
-		return ret;
-	}
-
-	spin_lock(&chip->sram_rw_lock);
-
-	dev_vdbg(chip->dev,
-		"Wrtiting address 0x%x with offset %d of length %d to SRAM",
-		addr, len, offset);
-
-	ret = qcom_fg_sram_config_access(chip, 1, (len > 4));
-	if (ret) {
-		dev_err(chip->dev, "Failed to configure SRAM access: %d", ret);
-		goto out;
-	}
-
-	while(len > 0) {
-		/* Set SRAM address register */
-		ret = qcom_fg_write(chip, (u8 *) &addr,
-				MEM_INTF_ADDR_LSB, 2);
-		if (ret) {
-			dev_err(chip->dev, "Failed to set SRAM address: %d", ret);
-			goto out;
-		}
-
-		ret = qcom_fg_write(chip, wr_data,
-				MEM_INTF_WR_DATA0 + offset, len);
-
-		addr += 4;
-
-		if (ret)
-			goto out;
-
-		wr_data += 4 - offset;
-		len -= 4 - offset;
-		offset = 0;
-	}
-out:
-	spin_unlock(&chip->sram_rw_lock);
-	qcom_fg_sram_release_access(chip);
-
-	return ret;
-}
-
 /*************************
  * BATTERY STATUS
  * ***********************/
@@ -499,6 +160,10 @@ static int qcom_fg_get_capacity(struct qcom_fg_chip *chip, int *val)
 	return 0;
 }
 
+/*************************
+ * BATTERY STATUS, GEN3
+ * ***********************/
+
 /**
  * @brief qcom_fg_get_temperature() - Get temperature of battery
  *
@@ -507,170 +172,6 @@ static int qcom_fg_get_capacity(struct qcom_fg_chip *chip, int *val)
  * @return int 0 on success, negative errno on error
  */
 static int qcom_fg_get_temperature(struct qcom_fg_chip *chip, int *val)
-{
-	int temp;
-	u8 readval[2];
-	int ret;
-
-	ret = qcom_fg_sram_read(chip, readval, BATT_TEMP, 2, 2);
-	if (ret) {
-		dev_err(chip->dev, "Failed to read temperature: %d", ret);
-		return ret;
-	}
-
-	temp = readval[1] << 8 | readval[0];
-	*val = temp * 625 / 1000 - 2730;
-	return 0;
-}
-
-/**
- * @brief qcom_fg_get_current() - Get current being drawn from battery
- *
- * @param chip Pointer to chip
- * @param val Pointer to store value at
- * @return int 0 on success, negative errno on error
- */
-static int qcom_fg_get_current(struct qcom_fg_chip *chip, int *val)
-{
-	s16 temp;
-	u8 readval[2];
-	int ret;
-
-	ret = qcom_fg_sram_read(chip, readval, BATT_VOLTAGE_CURRENT, 2, 3);
-	if (ret) {
-		dev_err(chip->dev, "Failed to read current: %d", ret);
-		return ret;
-	}
-
-	temp = (s16)(readval[1] << 8 | readval[0]);
-	*val = div_s64((s64)temp * 152587, 1000);
-
-	return 0;
-}
-
-/**
- * @brief qcom_fg_get_voltage() - Get voltage of battery
- *
- * @param chip Pointer to chip
- * @param val Pointer to store value at
- * @return int 0 on success, negative errno on error
- */
-static int qcom_fg_get_voltage(struct qcom_fg_chip *chip, int *val)
-{
-	int temp;
-	u8 readval[2];
-	int ret;
-
-	ret = qcom_fg_sram_read(chip, readval, BATT_VOLTAGE_CURRENT, 2, 1);
-	if (ret) {
-		dev_err(chip->dev, "Failed to read voltage: %d", ret);
-		return ret;
-	}
-
-	temp = readval[1] << 8 | readval[0];
-	*val = div_u64((u64)temp * 152587, 1000);
-
-	return 0;
-}
-
-/**
- * @brief qcom_fg_get_temp_threshold() - Get configured temperature thresholds
- *
- * @param chip Pointer to chip
- * @param psp Power supply property of temperature limit
- * @param val Pointer to store value at
- * @return int 0 on success, negative errno on error
- */
-static int qcom_fg_get_temp_threshold(struct qcom_fg_chip *chip,
-				enum power_supply_property psp, int *val)
-{
-	u8 temp;
-	int offset;
-	int ret;
-
-	switch (psp) {
-	case POWER_SUPPLY_PROP_TEMP_MIN:
-		offset = 0;
-		break;
-	case POWER_SUPPLY_PROP_TEMP_MAX:
-		offset = 1;
-		break;
-	case POWER_SUPPLY_PROP_TEMP_ALERT_MIN:
-		offset = 2;
-		break;
-	case POWER_SUPPLY_PROP_TEMP_ALERT_MAX:
-		offset = 3;
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	ret = qcom_fg_sram_read(chip, &temp, TEMP_THRESHOLD, 1, offset);
-	if (ret < 0) {
-		dev_err(chip->dev, "Failed to read JEITA property %d level: %d\n", psp, ret);
-		return ret;
-	}
-
-	*val = (temp - 30) * 10;
-
-	return 0;
-}
-
-/**
- * @brief qcom_fg_set_temp_threshold() - Configure temperature thresholds
- *
- * @param chip Pointer to chip
- * @param psp Power supply property of temperature limit
- * @param val Pointer to get value from
- * @return int 0 on success, negative errno on error
- */
-static int qcom_fg_set_temp_threshold(struct qcom_fg_chip *chip,
-				enum power_supply_property psp, int val)
-{
-	u8 temp;
-	int offset;
-	int ret;
-
-	switch (psp) {
-	case POWER_SUPPLY_PROP_TEMP_MIN:
-		offset = 0;
-		break;
-	case POWER_SUPPLY_PROP_TEMP_MAX:
-		offset = 1;
-		break;
-	case POWER_SUPPLY_PROP_TEMP_ALERT_MIN:
-		offset = 2;
-		break;
-	case POWER_SUPPLY_PROP_TEMP_ALERT_MAX:
-		offset = 3;
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	temp = val / 10 + 30;
-
-	ret = qcom_fg_sram_write(chip, &temp, TEMP_THRESHOLD, 1, offset);
-	if (ret < 0) {
-		dev_err(chip->dev, "Failed to write JEITA property %d level: %d\n", psp, ret);
-		return ret;
-	}
-
-	return 0;
-}
-
-/*************************
- * BATTERY STATUS, GEN3
- * ***********************/
-
-/**
- * @brief qcom_fg_gen3_get_temperature() - Get temperature of battery
- *
- * @param chip Pointer to chip
- * @param val Pointer to store value at
- * @return int 0 on success, negative errno on error
- */
-static int qcom_fg_gen3_get_temperature(struct qcom_fg_chip *chip, int *val)
 {
 	int temp;
 	u8 readval[2];
@@ -691,13 +192,13 @@ static int qcom_fg_gen3_get_temperature(struct qcom_fg_chip *chip, int *val)
 }
 
 /**
- * @brief qcom_fg_gen3_get_current() - Get current being drawn from battery
+ * @brief qcom_fg_get_current() - Get current being drawn from battery
  *
  * @param chip Pointer to chip
  * @param val Pointer to store value at
  * @return int 0 on success, negative errno on error
  */
-static int qcom_fg_gen3_get_current(struct qcom_fg_chip *chip, int *val)
+static int qcom_fg_get_current(struct qcom_fg_chip *chip, int *val)
 {
 	s16 temp;
 	u8 readval[2];
@@ -723,13 +224,13 @@ static int qcom_fg_gen3_get_current(struct qcom_fg_chip *chip, int *val)
 }
 
 /**
- * @brief qcom_fg_gen3_get_voltage() - Get voltage of battery
+ * @brief qcom_fg_get_voltage() - Get voltage of battery
  *
  * @param chip Pointer to chip
  * @param val Pointer to store value at
  * @return int 0 on success, negative errno on error
  */
-static int qcom_fg_gen3_get_voltage(struct qcom_fg_chip *chip, int *val)
+static int qcom_fg_get_voltage(struct qcom_fg_chip *chip, int *val)
 {
 	int temp;
 	u8 readval[2];
@@ -748,14 +249,14 @@ static int qcom_fg_gen3_get_voltage(struct qcom_fg_chip *chip, int *val)
 }
 
 /**
- * @brief qcom_fg_gen3_get_temp_threshold() - Get configured temperature thresholds
+ * @brief qcom_fg_get_temp_threshold() - Get configured temperature thresholds
  *
  * @param chip Pointer to chip
  * @param psp Power supply property of temperature limit
  * @param val Pointer to store value at
  * @return int 0 on success, negative errno on error
  */
-static int qcom_fg_gen3_get_temp_threshold(struct qcom_fg_chip *chip,
+static int qcom_fg_get_temp_threshold(struct qcom_fg_chip *chip,
 				enum power_supply_property psp, int *val)
 {
 	u8 temp;
@@ -793,25 +294,6 @@ static int qcom_fg_gen3_get_temp_threshold(struct qcom_fg_chip *chip,
 /************************
  * BATTERY POWER SUPPLY
  * **********************/
-
-/* Pre-Gen3 fuel gauge. PMI8996 and older */
-static const struct qcom_fg_ops ops_fg = {
-	.get_capacity = qcom_fg_get_capacity,
-	.get_temperature = qcom_fg_get_temperature,
-	.get_current = qcom_fg_get_current,
-	.get_voltage = qcom_fg_get_voltage,
-	.get_temp_threshold = qcom_fg_get_temp_threshold,
-	.set_temp_threshold = qcom_fg_set_temp_threshold,
-};
-
-/* Gen3 fuel gauge. PMI8998 and newer */
-static const struct qcom_fg_ops ops_fg_gen3 = {
-	.get_capacity = qcom_fg_get_capacity,
-	.get_temperature = qcom_fg_gen3_get_temperature,
-	.get_current = qcom_fg_gen3_get_current,
-	.get_voltage = qcom_fg_gen3_get_voltage,
-	.get_temp_threshold = qcom_fg_gen3_get_temp_threshold,
-};
 
 static enum power_supply_property qcom_fg_props[] = {
 	POWER_SUPPLY_PROP_STATUS,
@@ -851,7 +333,7 @@ static int qcom_fg_get_property(struct power_supply *psy,
 			 * Fall back to capacity and current-based
 			 * status checking
 			 */
-			ret = chip->ops->get_capacity(chip, &temp);
+			ret = qcom_fg_get_capacity(chip, &temp);
 			if (ret) {
 				val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
 				break;
@@ -861,7 +343,7 @@ static int qcom_fg_get_property(struct power_supply *psy,
 				break;
 			}
 
-			ret = chip->ops->get_current(chip, &temp);
+			ret = qcom_fg_get_current(chip, &temp);
 			if (ret) {
 				val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
 				break;
@@ -879,13 +361,13 @@ static int qcom_fg_get_property(struct power_supply *psy,
 		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
-		ret = chip->ops->get_capacity(chip, &val->intval);
+		ret = qcom_fg_get_capacity(chip, &val->intval);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		ret = chip->ops->get_current(chip, &val->intval);
+		ret = qcom_fg_get_current(chip, &val->intval);
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		ret = chip->ops->get_voltage(chip, &val->intval);
+		ret = qcom_fg_get_voltage(chip, &val->intval);
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN:
 		val->intval = chip->batt_info->voltage_min_design_uv;
@@ -900,13 +382,13 @@ static int qcom_fg_get_property(struct power_supply *psy,
 		val->intval = 1;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
-		ret = chip->ops->get_temperature(chip, &val->intval);
+		ret = qcom_fg_get_temperature(chip, &val->intval);
 		break;
 	case POWER_SUPPLY_PROP_TEMP_MIN:
 	case POWER_SUPPLY_PROP_TEMP_MAX:
 	case POWER_SUPPLY_PROP_TEMP_ALERT_MIN:
 	case POWER_SUPPLY_PROP_TEMP_ALERT_MAX:
-		ret = chip->ops->get_temp_threshold(chip, psp, &val->intval);
+		ret = qcom_fg_get_temp_threshold(chip, psp, &val->intval);
 		break;
 	default:
 		dev_err(chip->dev, "invalid property: %d\n", psp);
@@ -1035,21 +517,6 @@ static irqreturn_t qcom_fg_handle_soc_delta(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t qcom_fg_handle_mem_avail(int irq, void *data)
-{
-	struct qcom_fg_chip *chip = data;
-
-	if (qcom_fg_sram_check_access(chip)) {
-		complete_all(&chip->sram_access_granted);
-		dev_dbg(chip->dev, "SRAM access granted");
-	} else {
-		complete_all(&chip->sram_access_revoked);
-		dev_dbg(chip->dev, "SRAM access revoked");
-	}
-
-	return IRQ_HANDLED;
-}
-
 static void qcom_fg_status_changed_worker(struct work_struct *work)
 {
 	struct qcom_fg_chip *chip = container_of(work, struct qcom_fg_chip,
@@ -1110,7 +577,6 @@ static int qcom_fg_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	chip->dev = &pdev->dev;
-	chip->ops = of_device_get_match_data(&pdev->dev);
 
 	chip->regmap = dev_get_regmap(pdev->dev.parent, NULL);
 	if (!chip->regmap) {
@@ -1180,74 +646,6 @@ static int qcom_fg_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	/* Initialize SRAM */
-	if (of_device_is_compatible(pdev->dev.of_node, "qcom,pmi8994-fg")) {
-		irq = of_irq_get_byname(pdev->dev.of_node, "mem-avail");
-		if (irq < 0) {
-			dev_err(&pdev->dev, "Failed to get irq mem-avail byname: %d\n",
-				irq);
-			return irq;
-		}
-
-		init_completion(&chip->sram_access_granted);
-		init_completion(&chip->sram_access_revoked);
-
-		chip->sram_wq = create_singlethread_workqueue("qcom_fg");
-		INIT_DELAYED_WORK(&chip->sram_release_access_work,
-			qcom_fg_sram_release_access_worker);
-
-		ret = devm_request_threaded_irq(chip->dev, irq, NULL,
-						qcom_fg_handle_mem_avail,
-						IRQF_ONESHOT, "mem-avail", chip);
-		if (ret < 0) {
-			dev_err(&pdev->dev, "Failed to request mem-avail IRQ: %d\n", ret);
-			return ret;
-		}
-
-		spin_lock_init(&chip->sram_request_lock);
-		spin_lock_init(&chip->sram_rw_lock);
-		chip->sram_requests = 0;
-	}
-
-	/* Set default temperature thresholds */
-	if (chip->ops->set_temp_threshold) {
-		ret = chip->ops->set_temp_threshold(chip,
-						POWER_SUPPLY_PROP_TEMP_MIN,
-						BATT_TEMP_JEITA_COLD);
-		if (ret) {
-			dev_err(chip->dev,
-				"Failed to set cold threshold: %d\n", ret);
-			return ret;
-		}
-
-		ret = chip->ops->set_temp_threshold(chip,
-						POWER_SUPPLY_PROP_TEMP_MAX,
-						BATT_TEMP_JEITA_WARM);
-		if (ret) {
-			dev_err(chip->dev,
-				"Failed to set warm threshold: %d\n", ret);
-			return ret;
-		}
-
-		ret = chip->ops->set_temp_threshold(chip,
-						POWER_SUPPLY_PROP_TEMP_ALERT_MIN,
-						BATT_TEMP_JEITA_COOL);
-		if (ret) {
-			dev_err(chip->dev,
-				"Failed to set cool threshold: %d\n", ret);
-			return ret;
-		}
-
-		ret = chip->ops->set_temp_threshold(chip,
-						POWER_SUPPLY_PROP_TEMP_ALERT_MAX,
-						BATT_TEMP_JEITA_HOT);
-		if (ret) {
-			dev_err(chip->dev,
-				"Failed to set hot threshold: %d\n", ret);
-			return ret;
-		}
-	}
-
 	/* Get soc-delta IRQ */
 	irq = of_irq_get_byname(pdev->dev.of_node, "soc-delta");
 	if (irq < 0) {
@@ -1291,15 +689,10 @@ static int qcom_fg_probe(struct platform_device *pdev)
 
 static void qcom_fg_remove(struct platform_device *pdev)
 {
-	struct qcom_fg_chip *chip = platform_get_drvdata(pdev);
-
-	if(chip->sram_wq)
-		destroy_workqueue(chip->sram_wq);
 }
 
 static const struct of_device_id fg_match_id_table[] = {
-	{ .compatible = "qcom,pmi8994-fg", .data = &ops_fg },
-	{ .compatible = "qcom,pmi8998-fg", .data = &ops_fg_gen3 },
+	{ .compatible = "qcom,pmi8998-fg" },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, fg_match_id_table);

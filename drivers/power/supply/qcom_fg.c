@@ -89,13 +89,13 @@ static int qcom_fg_write(struct qcom_fg_chip *chip, u8 *val, u16 addr, int len)
 	int ret;
 
 	if (((chip->base + addr) & 0xff00) == 0)
-			return -EINVAL;
+		return -EINVAL;
 
 	dev_vdbg(chip->dev, "%s: Writing 0x%x to 0x%x", __func__, *val, addr);
 
 	if (sec_access) {
 		ret = regmap_bulk_write(chip->regmap,
-				((chip->base + addr) & 0xff00) | 0xd0,
+					((chip->base + addr) & 0xff00) | 0xd0,
 				&sec_addr_val, 1);
 		if (ret)
 			return ret;
@@ -151,9 +151,8 @@ static int qcom_fg_get_capacity(struct qcom_fg_chip *chip, int *val)
 		return ret;
 	}
 
-	if (cap[0] != cap[1]) {
+	if (cap[0] != cap[1])
 		cap[0] = cap[0] < cap[1] ? cap[0] : cap[1];
-	}
 
 	*val = DIV_ROUND_CLOSEST((cap[0] - 1) * 98, 0xff - 2) + 1;
 
@@ -187,7 +186,7 @@ static int qcom_fg_get_temperature(struct qcom_fg_chip *chip, int *val)
 		(readval[0] & BATT_TEMP_LSB_MASK);
 	temp = DIV_ROUND_CLOSEST(temp * 10, 4);
 
-	*val = temp -2730;
+	*val = temp - 2730;
 	return 0;
 }
 
@@ -257,7 +256,7 @@ static int qcom_fg_get_voltage(struct qcom_fg_chip *chip, int *val)
  * @return int 0 on success, negative errno on error
  */
 static int qcom_fg_get_temp_threshold(struct qcom_fg_chip *chip,
-				enum power_supply_property psp, int *val)
+				      enum power_supply_property psp, int *val)
 {
 	u8 temp;
 	u16 reg;
@@ -313,8 +312,8 @@ static enum power_supply_property qcom_fg_props[] = {
 };
 
 static int qcom_fg_get_property(struct power_supply *psy,
-		enum power_supply_property psp,
-		union power_supply_propval *val)
+				enum power_supply_property psp,
+				union power_supply_propval *val)
 {
 	struct qcom_fg_chip *chip = power_supply_get_drvdata(psy);
 	int temp, ret = 0;
@@ -327,7 +326,6 @@ static int qcom_fg_get_property(struct power_supply *psy,
 		if (chip->chg_psy &&
 		    chip->status != POWER_SUPPLY_STATUS_UNKNOWN) {
 			val->intval = chip->status;
-			break;
 		} else {
 			/*
 			 * Fall back to capacity and current-based
@@ -451,22 +449,20 @@ static int qcom_fg_iacs_clear_sequence(struct qcom_fg_chip *chip)
 	return 0;
 }
 
-static int qcom_fg_clear_ima(struct qcom_fg_chip *chip,
-		bool check_hw_sts)
+static int qcom_fg_clear_ima(struct qcom_fg_chip *chip, bool check_hw_sts)
 {
 	u8 err_sts, exp_sts, hw_sts;
 	bool run_err_clr_seq = false;
 	int ret;
 
-	ret = qcom_fg_read(chip, &err_sts,
-			MEM_INTF_IMA_ERR_STS, 1);
+	ret = qcom_fg_read(chip, &err_sts, MEM_INTF_IMA_ERR_STS, 1);
 	if (ret) {
 		dev_err(chip->dev, "Failed to read IMA_ERR_STS: %d\n", ret);
 		return ret;
 	}
 
 	ret = qcom_fg_read(chip, &exp_sts,
-			MEM_INTF_IMA_EXP_STS, 1);
+			   MEM_INTF_IMA_EXP_STS, 1);
 	if (ret) {
 		dev_err(chip->dev, "Failed to read IMA_EXP_STS: %d\n", ret);
 		return ret;
@@ -474,7 +470,7 @@ static int qcom_fg_clear_ima(struct qcom_fg_chip *chip,
 
 	if (check_hw_sts) {
 		ret = qcom_fg_read(chip, &hw_sts,
-				MEM_INTF_IMA_HW_STS, 1);
+				   MEM_INTF_IMA_HW_STS, 1);
 		if (ret) {
 			dev_err(chip->dev, "Failed to read IMA_HW_STS: %d\n", ret);
 			return ret;
@@ -485,7 +481,7 @@ static int qcom_fg_clear_ima(struct qcom_fg_chip *chip,
 		 */
 		if ((hw_sts & 0x0f) != hw_sts >> 4) {
 			dev_dbg(chip->dev, "IMA HW not in correct state, hw_sts=%x\n",
-					hw_sts);
+				hw_sts);
 			run_err_clr_seq = true;
 		}
 	}
@@ -525,8 +521,7 @@ static void qcom_fg_status_changed_worker(struct work_struct *work)
 	power_supply_changed(chip->batt_psy);
 }
 
-static int qcom_fg_notifier_call(struct notifier_block *nb,
-		unsigned long val, void *v)
+static int qcom_fg_notifier_call(struct notifier_block *nb, unsigned long val, void *v)
 {
 	struct qcom_fg_chip *chip = container_of(nb, struct qcom_fg_chip, nb);
 	struct power_supply *psy = v;
@@ -535,7 +530,7 @@ static int qcom_fg_notifier_call(struct notifier_block *nb,
 
 	if (psy == chip->chg_psy) {
 		ret = power_supply_get_property(psy,
-				POWER_SUPPLY_PROP_STATUS, &propval);
+						POWER_SUPPLY_PROP_STATUS, &propval);
 		if (ret)
 			chip->status = POWER_SUPPLY_STATUS_UNKNOWN;
 
@@ -555,7 +550,7 @@ static int qcom_fg_notifier_call(struct notifier_block *nb,
 			 */
 			cancel_delayed_work_sync(&chip->status_changed_work);
 			schedule_delayed_work(&chip->status_changed_work,
-						msecs_to_jiffies(1000));
+					      msecs_to_jiffies(1000));
 		}
 	}
 
@@ -598,8 +593,7 @@ static int qcom_fg_probe(struct platform_device *pdev)
 	 * that the next transaction starts only after the hw is ready.
 	 * IACS_INTR_SRC_SLCT is BIT(3)
 	 */
-	ret = qcom_fg_masked_write(chip,
-		MEM_INTF_IMA_CFG, BIT(3), BIT(3));
+	ret = qcom_fg_masked_write(chip, MEM_INTF_IMA_CFG, BIT(3), BIT(3));
 	if (ret) {
 		dev_err(chip->dev,
 			"Failed to configure interrupt sourete: %d\n", ret);
@@ -621,7 +615,7 @@ static int qcom_fg_probe(struct platform_device *pdev)
 
 	error_present = dma_status & (BIT(1) | BIT(2));
 	ret = qcom_fg_masked_write(chip, MEM_IF_DMA_CTL, BIT(0),
-			error_present ? BIT(0) : 0);
+				   error_present ? BIT(0) : 0);
 	if (ret < 0) {
 		dev_err(chip->dev, "Failed to write dma_ctl: %d\n", ret);
 		return ret;
@@ -631,7 +625,7 @@ static int qcom_fg_probe(struct platform_device *pdev)
 	supply_config.of_node = pdev->dev.of_node;
 
 	chip->batt_psy = devm_power_supply_register(chip->dev,
-			&batt_psy_desc, &supply_config);
+						    &batt_psy_desc, &supply_config);
 	if (IS_ERR(chip->batt_psy)) {
 		if (PTR_ERR(chip->batt_psy) != -EPROBE_DEFER)
 			dev_err(&pdev->dev, "Failed to register battery\n");
@@ -664,7 +658,7 @@ static int qcom_fg_probe(struct platform_device *pdev)
 
 	/* Optional: Get charger power supply for status checking */
 	chip->chg_psy = power_supply_get_by_phandle(chip->dev->of_node,
-							"power-supplies");
+						    "power-supplies");
 	if (IS_ERR(chip->chg_psy)) {
 		ret = PTR_ERR(chip->chg_psy);
 		dev_warn(chip->dev, "Failed to get charger supply: %d\n", ret);
@@ -673,7 +667,7 @@ static int qcom_fg_probe(struct platform_device *pdev)
 
 	if (chip->chg_psy) {
 		INIT_DELAYED_WORK(&chip->status_changed_work,
-			qcom_fg_status_changed_worker);
+				  qcom_fg_status_changed_worker);
 
 		chip->nb.notifier_call = qcom_fg_notifier_call;
 		ret = power_supply_reg_notifier(&chip->nb);

@@ -13,6 +13,9 @@
 #include "sm6125.dtsi"
 #include "pm6125.dtsi"
 
+/delete-node/ &cont_splash_mem;
+/delete-node/ &reserved_mem1;
+
 / {
 	model = "Xiaomi Redmi Note 8";
 	compatible = "xiaomi,ginkgo", "qcom,sm6125";
@@ -36,27 +39,26 @@
 	};
 
 	reserved-memory {
-		debug_mem: debug@ffb00000 {
-			reg = <0x0 0xffb00000 0x0 0xc0000>;
+		qseecom@46d00000 {
+			reg = <0x00 0x46d00000 0x00 0x2200000>;
 			no-map;
 		};
 
-		last_log_mem: lastlog@ffbc0000 {
-			reg = <0x0 0xffbc0000 0x0 0x80000>;
+		framebuffer@5c000000 {
+			reg = <0x00 0x5c000000 0x00 (2340 * 1080 * 4)>;
 			no-map;
 		};
 
-		pstore_mem: ramoops@ffc00000 {
+		/*
+		 * Matching with recovery values
+		 * to be able to get the result.
+		 */
+		ramoops@61600000 {
 			compatible = "ramoops";
-			reg = <0x0 0xffc40000 0x0 0xc0000>;
-			record-size = <0x1000>;
-			console-size = <0x40000>;
-			pmsg-size = <0x20000>;
-		};
-
-		cmdline_mem: memory@ffd00000 {
-			reg = <0x0 0xffd40000 0x0 0x1000>;
-			no-map;
+			reg = <0x00 0x61600000 0x00 0x400000>;
+			record-size = <0x80000>;
+			pmsg-size = <0x200000>;
+			console-size = <0x100000>;
 		};
 	};
 

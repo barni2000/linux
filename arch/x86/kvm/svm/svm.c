@@ -2746,6 +2746,46 @@ static bool sev_es_prevent_msr_access(struct kvm_vcpu *vcpu,
 	       !msr_write_intercepted(vcpu, msr_info->index);
 }
 
+static bool svm_pat_accesses_gpat(struct kvm_vcpu *vcpu, bool from_host)
+{
+	struct vcpu_svm *svm = to_svm(vcpu);
+
+	/*
+	 * When nested NPT is enabled, L2 has a separate PAT from L1.  Guest
+	 * accesses to IA32_PAT while running L2 target L2's gPAT;
+	 * host-initiated accesses always target L1's hPAT for backward and
+	 * forward KVM_SET_MSRS compatibility with older kernels.
+	 */
+	WARN_ON_ONCE(from_host && vcpu->wants_to_run);
+	return !from_host && is_guest_mode(vcpu) && nested_npt_enabled(svm);
+}
+
+static u64 svm_get_pat(struct kvm_vcpu *vcpu, bool from_host)
+{
+	if (svm_pat_accesses_gpat(vcpu, from_host))
+		return to_svm(vcpu)->vmcb->save.g_pat;
+	else
+		return vcpu->arch.pat;
+}
+
+static void svm_set_pat(struct kvm_vcpu *vcpu, bool from_host, u64 data)
+{
+	struct vcpu_svm *svm = to_svm(vcpu);
+
+	if (svm_pat_accesses_gpat(vcpu, from_host)) {
+		vmcb_set_gpat(svm->vmcb, data);
+		return;
+	}
+
+	svm->vcpu.arch.pat = data;
+
+	if (npt_enabled) {
+		vmcb_set_gpat(svm->vmcb01.ptr, data);
+		if (is_guest_mode(&svm->vcpu) && !nested_npt_enabled(svm))
+			vmcb_set_gpat(svm->vmcb, data);
+	}
+}
+
 static int svm_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 {
 	struct vcpu_svm *svm = to_svm(vcpu);
@@ -2868,6 +2908,9 @@ static int svm_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	case MSR_AMD64_DE_CFG:
 		msr_info->data = svm->msr_decfg;
 		break;
+	case MSR_IA32_CR_PAT:
+		msr_info->data = svm_get_pat(vcpu, msr_info->host_initiated);
+		break;
 	default:
 		return kvm_get_msr_common(vcpu, msr_info);
 	}
@@ -2951,13 +2994,10 @@ static int svm_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr)
 
 		break;
 	case MSR_IA32_CR_PAT:
-		ret = kvm_set_msr_common(vcpu, msr);
-		if (ret)
-			break;
+		if (!kvm_pat_valid(data))
+			return 1;
 
-		vmcb_set_gpat(svm->vmcb01.ptr, data);
-		if (is_guest_mode(vcpu))
-			nested_vmcb02_compute_g_pat(svm);
+		svm_set_pat(vcpu, msr->host_initiated, data);
 		break;
 	case MSR_IA32_SPEC_CTRL:
 		if (!msr->host_initiated &&

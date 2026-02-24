@@ -2757,7 +2757,8 @@ static bool svm_pat_accesses_gpat(struct kvm_vcpu *vcpu, bool from_host)
 	 * forward KVM_SET_MSRS compatibility with older kernels.
 	 */
 	WARN_ON_ONCE(from_host && vcpu->wants_to_run);
-	return !from_host && is_guest_mode(vcpu) && nested_npt_enabled(svm);
+	return !svm->nested.legacy_gpat_semantics && !from_host &&
+	       is_guest_mode(vcpu) && nested_npt_enabled(svm);
 }
 
 static u64 svm_get_pat(struct kvm_vcpu *vcpu, bool from_host)
@@ -2781,7 +2782,8 @@ static void svm_set_pat(struct kvm_vcpu *vcpu, bool from_host, u64 data)
 
 	if (npt_enabled) {
 		vmcb_set_gpat(svm->vmcb01.ptr, data);
-		if (is_guest_mode(&svm->vcpu) && !nested_npt_enabled(svm))
+		if (is_guest_mode(&svm->vcpu) &&
+		    (svm->nested.legacy_gpat_semantics || !nested_npt_enabled(svm)))
 			vmcb_set_gpat(svm->vmcb, data);
 	}
 }
@@ -4347,6 +4349,8 @@ static int svm_vcpu_pre_run(struct kvm_vcpu *vcpu)
 {
 	if (to_kvm_sev_info(vcpu->kvm)->need_init)
 		return -EINVAL;
+
+	to_svm(vcpu)->nested.legacy_gpat_semantics = false;
 
 	return 1;
 }

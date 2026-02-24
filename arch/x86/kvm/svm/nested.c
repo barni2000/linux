@@ -1492,6 +1492,7 @@ void svm_leave_nested(struct kvm_vcpu *vcpu)
 	if (is_guest_mode(vcpu)) {
 		svm->nested.nested_run_pending = 0;
 		svm->nested.vmcb12_gpa = INVALID_GPA;
+		svm->nested.legacy_gpat_semantics = false;
 
 		leave_guest_mode(vcpu);
 
@@ -2012,9 +2013,14 @@ static int svm_set_nested_state(struct kvm_vcpu *vcpu,
 
 	svm_switch_vmcb(svm, &svm->nested.vmcb02);
 
+	svm->nested.legacy_gpat_semantics = false;
 	if (nested_npt_enabled(svm)) {
-		if (kvm_state->hdr.svm.flags & KVM_STATE_SVM_VALID_GPAT)
+		if (kvm_state->hdr.svm.flags & KVM_STATE_SVM_VALID_GPAT) {
 			vmcb_set_gpat(svm->vmcb, kvm_state->hdr.svm.gpat);
+		} else {
+			svm->nested.legacy_gpat_semantics = true;
+			vmcb_set_gpat(svm->vmcb, vcpu->arch.pat);
+		}
 	}
 
 	nested_vmcb02_prepare_control(svm);

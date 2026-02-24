@@ -239,6 +239,15 @@ struct svm_nested_state {
 	 * on its side.
 	 */
 	bool force_msr_bitmap_recalc;
+
+	/*
+	 * Indicates that a legacy nested state (without a valid gPAT) was
+	 * recently restored. Until the next KVM_RUN, updates to hPAT are
+	 * also applied to gPAT, preserving legacy behavior (i.e. L2 shares
+	 * L1's PAT). Because checkpoint restore is non-atomic, this
+	 * complication is necessary for backward compatibility.
+	 */
+	bool legacy_gpat_semantics;
 };
 
 struct vcpu_sev_es_state {

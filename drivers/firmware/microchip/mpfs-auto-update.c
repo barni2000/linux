@@ -424,9 +424,10 @@ static int mpfs_auto_update_probe(struct platform_device *pdev)
 				     "Could not register as a sub device of the system controller\n");
 
 	priv->flash = mpfs_sys_controller_get_flash(priv->sys_controller);
-	if (IS_ERR_OR_NULL(priv->flash))
-		return dev_err_probe(dev, -ENODEV,
-				     "No flash connected to the system controller, auto-update not supported\n");
+	if (IS_ERR_OR_NULL(priv->flash)) {
+		dev_dbg(dev, "No flash connected to the system controller, auto-update not supported\n");
+		return -ENODEV;
+	}
 
 	priv->dev = dev;
 	platform_set_drvdata(pdev, priv);
